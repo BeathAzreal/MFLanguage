@@ -1,0 +1,2 @@
+# hello.mfl - smallest MFL program (proposed syntax, not executable yet)
+print("Hello, MFL!")

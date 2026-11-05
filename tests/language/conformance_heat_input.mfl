@@ -1,0 +1,17 @@
+# heat_input.mfl - Arc welding heat input (proposed MFL syntax)
+#
+# STATUS: syntax proposal. This program is NOT executable yet: the MFL
+# lexer, parser, compiler and VM are still under development.
+#
+# Net heat input per unit length:  Q = eta * U * I / v
+#   eta = 0.8, U = 20 V, I = 150 A, v = 5 mm/s
+#   Q   = 0.8 * 20 * 150 / 5 = 480 W/(mm/s) = 480 J/mm
+
+let voltage = 20 V
+let current = 150 A
+let speed = 5 mm/s
+let efficiency = 0.8
+
+let energy = efficiency * voltage * current / speed
+
+print(energy.to(J/mm))

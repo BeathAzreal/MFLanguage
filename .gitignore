@@ -53,3 +53,20 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# --- MFL project additions ---
+# CMake build trees
+build/
+build-*/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+compile_commands.json
+Testing/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
