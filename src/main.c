@@ -19,6 +19,7 @@
 
 #include "compiler/checker.h"
 #include "compiler/compiler.h"
+#include "compiler/loader.h"
 #include "lexer/lexer.h"
 #include "mfl/mfl.h"
 #include "parser/parser.h"
@@ -137,39 +138,76 @@ static void write_stdout(void *ctx, const char *data, size_t length)
 
 enum { MODE_RUN, MODE_AST, MODE_TYPES, MODE_BYTECODE };
 
-static void print_diagnostics(const char *path, const MflDiagnostic *d)
+/* Name of file `index` of the program (the main file is `path`). */
+static const char *file_label(const char *path, const MflLoadResult *ld, int index)
+{
+    if (ld != NULL && index >= 0 && index < ld->file_count && ld->names != NULL) {
+        return ld->names[index];
+    }
+    return path;
+}
+
+static void print_diagnostics(const char *path, const MflLoadResult *ld, const MflDiagnostic *d)
 {
     for (; d != NULL; d = d->next) {
-        fprintf(stderr, "%s:%d:%d: error: %s\n", path, d->line, d->column, d->message);
+        fprintf(stderr, "%s:%d:%d: error: %s\n", file_label(path, ld, d->file), d->line, d->column,
+                d->message);
     }
 }
 
-/* Runs the pipeline up to the stage the mode needs. Diagnostics go to
- * stderr as "file:line:col: error: msg". Returns the exit status. */
-static int process_file(const char *path, int mode)
+/* --ast: one file, syntax only (imports are not followed). */
+static int print_ast(const char *path)
 {
     MflParseResult res;
     size_t len = 0;
     char *src = read_file(path, &len);
     int ok;
-    int status = 0;
 
     if (src == NULL) {
         fprintf(stderr, "mfl: cannot read '%s'\n", path);
         return 1;
     }
     ok = mfl_parse(src, len, 0, &res);
-    print_diagnostics(path, res.diagnostics);
+    print_diagnostics(path, NULL, res.diagnostics);
     if (res.out_of_memory) {
         fprintf(stderr, "mfl: out of memory while parsing '%s'\n", path);
     }
-    if (ok && mode == MODE_AST) {
+    if (ok) {
         mfl_ast_print_program(&res.program, write_stdout, NULL);
     }
-    if (ok && mode != MODE_AST) {
+    mfl_parse_free(&res);
+    free(src);
+    return ok ? 0 : 1;
+}
+
+/* Runs the pipeline up to the stage the mode needs. Diagnostics go to
+ * stderr as "file:line:col: error: msg". Returns the exit status. */
+static int process_file(const char *path, int mode)
+{
+    MflLoadResult res;
+    size_t len = 0;
+    char *src;
+    int ok;
+    int status = 0;
+
+    if (mode == MODE_AST) {
+        return print_ast(path);
+    }
+    src = read_file(path, &len);
+    if (src == NULL) {
+        fprintf(stderr, "mfl: cannot read '%s'\n", path);
+        return 1;
+    }
+    ok = mfl_load(src, len, path, mfl_read_source_file, NULL, 0, &res);
+    print_diagnostics(path, &res, res.diagnostics);
+    if (res.out_of_memory) {
+        fprintf(stderr, "mfl: out of memory while parsing '%s'\n", path);
+        status = 3;
+    }
+    if (ok) {
         MflCheckResult chk;
         ok = mfl_check(&res.program, 0, &chk);
-        print_diagnostics(path, chk.diagnostics);
+        print_diagnostics(path, &res, chk.diagnostics);
         if (chk.out_of_memory) {
             fprintf(stderr, "mfl: out of memory while checking '%s'\n", path);
         }
@@ -179,7 +217,7 @@ static int process_file(const char *path, int mode)
         if (ok && (mode == MODE_RUN || mode == MODE_BYTECODE)) {
             MflCompileResult comp;
             ok = mfl_compile(&res.program, &chk, 0, &comp);
-            print_diagnostics(path, comp.diagnostics);
+            print_diagnostics(path, &res, comp.diagnostics);
             if (comp.out_of_memory) {
                 fprintf(stderr, "mfl: out of memory while compiling '%s'\n", path);
                 status = 3;
@@ -189,12 +227,12 @@ static int process_file(const char *path, int mode)
             }
             if (ok && mode == MODE_RUN) {
                 MflVmError err;
-                MflVmStatus vs =
-                    mfl_vm_execute(&comp.chunk, NULL, 0, NULL, write_stdout, NULL, NULL, &err);
+                MflVmStatus vs = mfl_vm_execute_ex(&comp.chunk, NULL, 0, NULL, write_stdout, NULL,
+                                                   NULL, NULL, &err);
                 fflush(stdout);
                 if (vs == MFL_VM_RUNTIME_ERROR) {
-                    fprintf(stderr, "%s:%d:%d: runtime error: %s\n", path, err.line, err.column,
-                            err.message);
+                    fprintf(stderr, "%s:%d:%d: runtime error: %s\n",
+                            file_label(path, &res, err.file), err.line, err.column, err.message);
                     ok = 0;
                 } else if (vs != MFL_VM_OK) {
                     fprintf(stderr, "mfl: %s while running '%s'\n",
@@ -208,7 +246,7 @@ static int process_file(const char *path, int mode)
         }
         mfl_check_free(&chk);
     }
-    mfl_parse_free(&res);
+    mfl_load_free(&res);
     free(src);
     if (status != 0) {
         return status;

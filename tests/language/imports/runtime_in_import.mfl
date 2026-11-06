@@ -1,0 +1,3 @@
+import "lib/fails.mfl"
+print(checked_add(1 m, 2 mm))
+print(checked_add(1 m, 2 s))

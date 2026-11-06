@@ -38,6 +38,7 @@ typedef struct {
 } MflVmLimits;
 
 typedef struct {
+    int  file;   /* index in the program's file table (v0.3) */
     int  line;   /* source position of the failing instruction (0 if unknown) */
     int  column;
     char message[400];
@@ -50,6 +51,15 @@ typedef struct {
 MflVmStatus mfl_vm_execute(const MflChunk *chunk, const MflValue *init, size_t init_count,
                            MflValue *snapshot, MflWriteFn write, void *ctx,
                            const MflVmLimits *limits, MflVmError *error);
+
+/* v0.3: same as mfl_vm_execute(), with the session that holds the
+ * simulations run by the program (heat.run(); see modules/natives.h).
+ * session may be NULL: the heat module then reports a run-time error. */
+struct MflNativeSession;
+MflVmStatus mfl_vm_execute_ex(const MflChunk *chunk, const MflValue *init, size_t init_count,
+                              MflValue *snapshot, MflWriteFn write, void *ctx,
+                              const MflVmLimits *limits, struct MflNativeSession *session,
+                              MflVmError *error);
 
 /* v0.1 entry points (no limits besides memory; error details dropped). */
 MflVmStatus mfl_vm_run(const MflChunk *chunk, MflWriteFn write, void *ctx, size_t memory_limit);

@@ -439,8 +439,61 @@ static void test_status_names(void)
     CHECK(strcmp(mfl_version(), MFL_VERSION_STRING) == 0);
 }
 
-int main(void)
+static const char *g_source_dir = ".";
+
+/* v0.3: imports through the API. File imports are off by default. */
+static void test_imports(void)
 {
+    Capture cap;
+    MflState *S = new_capturing(&cap, 0);
+    char name[1024];
+    const char *uses_lib = "import \"lib/steel.mfl\"\n"
+                           "let alpha = diffusivity(k_steel, rho_steel, cp_steel)\n";
+    const char *modules = "import numerical\nlet m = numerical.mean([1 mm, 3 mm])\n"
+                          "let T = 20 degC\n";
+    double v = 0;
+
+    snprintf(name, sizeof name, "%s/tests/language/imports/api_main.mfl", g_source_dir);
+    CHECK_STATUS(mfl_eval(S, uses_lib, strlen(uses_lib), name), MFL_ERR_PROGRAM);
+    CHECK(strstr(mfl_error_message(S), "file imports are not enabled") != NULL);
+    CHECK(strstr(mfl_error_message(S), "api_main.mfl:1:1: error:") != NULL);
+
+    mfl_set_file_imports(S, 1);
+    CHECK_STATUS(mfl_eval(S, uses_lib, strlen(uses_lib), name), MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "alpha", "mm^2/s", &v), MFL_OK);
+    CHECK(fabs(v - 63.9 / (7832.0 * 434.0) * 1e6) < 1e-12);
+    CHECK(strstr(cap.text, "steel.mfl loaded") != NULL);
+    /* names of imported files are results too */
+    CHECK_STATUS(mfl_get_number(S, "k_steel", "W/(m*K)", &v), MFL_OK);
+    CHECK(v == 63.9);
+
+    /* errors in an imported file name that file */
+    {
+        const char *bad = "import \"lib/fails.mfl\"\nlet x = checked_add(1 m, 1 s)\n";
+        CHECK_STATUS(mfl_eval(S, bad, strlen(bad), name), MFL_ERR_RUNTIME);
+        CHECK(strstr(mfl_error_message(S), "lib/fails.mfl:1:33: runtime error: cannot add") != NULL);
+    }
+    {
+        const char *missing = "import \"lib/none.mfl\"\n";
+        CHECK_STATUS(mfl_eval(S, missing, strlen(missing), name), MFL_ERR_PROGRAM);
+        CHECK(strstr(mfl_error_message(S), "cannot read the imported file") != NULL);
+    }
+
+    /* module imports are always available; degC results read back in K */
+    mfl_set_file_imports(S, 0);
+    CHECK_STATUS(mfl_eval(S, modules, strlen(modules), "modules.mfl"), MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "m", "mm", &v), MFL_OK);
+    CHECK(v == 2.0);
+    CHECK_STATUS(mfl_get_number(S, "T", "K", &v), MFL_OK);
+    CHECK(fabs(v - 293.15) < 1e-12);
+    mfl_state_free(S);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc > 1) {
+        g_source_dir = argv[1];
+    }
     test_heat_input();
     test_inputs();
     test_bad_arguments();
@@ -453,6 +506,7 @@ int main(void)
     test_runtime_errors();
     test_v02_programs();
     test_status_names();
+    test_imports();
     printf("test_api: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

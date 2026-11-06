@@ -16,6 +16,7 @@
  */
 #include "compiler/checker.h"
 #include "compiler/compiler.h" /* mfl_unit_text */
+#include "modules/natives.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -36,10 +37,24 @@ typedef struct {
 } Local;
 
 typedef struct {
+    int     file;
+    MflText name;
+    int     line;
+    int     column;
+} ModuleImport;
+
+typedef struct {
     MflCheckResult *res;
     MflDiagnostic  *diag_tail;
     MflSymbol      *sym_tail;
     int             stop;
+
+    /* files (v0.3) */
+    const MflProgram *program;
+    int               file;    /* file of the code being checked */
+    ModuleImport     *modules; /* `import name` statements seen so far */
+    int               module_count;
+    int               module_cap;
 
     /* current function (NULL: top-level code) */
     MflFnSig       *fn;
@@ -181,6 +196,7 @@ static void add_diag(Checker *c, int line, int column, const char *text)
         return;
     }
     memcpy(msg, text, len + 1);
+    d->file = c->file;
     d->line = line;
     d->column = column;
     d->message = msg;
@@ -262,6 +278,52 @@ static int builtin_of(MflText name)
     return -1;
 }
 
+/* May code in file `from` use a name declared in file `to`? */
+static int visible(const Checker *c, int to)
+{
+    const MflProgram *p = c->program;
+    if (to < 0 || p == NULL || p->visible == NULL || p->file_count <= 1) {
+        return 1;
+    }
+    if (c->file < 0 || c->file >= p->file_count || to >= p->file_count) {
+        return 1;
+    }
+    return p->visible[c->file * p->file_count + to];
+}
+
+static const char *file_name(const Checker *c, int file)
+{
+    const MflProgram *p = c->program;
+    if (p == NULL || p->file_names == NULL || file < 0 || file >= p->file_count) {
+        return "?";
+    }
+    return p->file_names[file];
+}
+
+/* "12:3" for a position in the current file, "steel.mfl:12:3" otherwise. */
+static const char *where(const Checker *c, int file, int line, int column, char *buf, size_t size)
+{
+    if (file < 0 || file == c->file || c->program == NULL || c->program->file_count <= 1) {
+        snprintf(buf, size, "%d:%d", line, column);
+    } else {
+        snprintf(buf, size, "%s:%d:%d", file_name(c, file), line, column);
+    }
+    return buf;
+}
+
+/* `import name` of a module in the current file, or NULL. */
+static const ModuleImport *imported_module(const Checker *c, MflText name)
+{
+    int i;
+    for (i = 0; i < c->module_count; i++) {
+        if (c->modules[i].file == c->file && c->modules[i].name.length == name.length &&
+            memcmp(c->modules[i].name.start, name.start, name.length) == 0) {
+            return &c->modules[i];
+        }
+    }
+    return NULL;
+}
+
 static MflSymbol *find_global(Checker *c, MflText name)
 {
     MflSymbol *s;
@@ -319,6 +381,7 @@ static void declare_global(Checker *c, const MflStmt *st, MflType type)
     s->line = st->line;
     s->column = st->column;
     s->is_var = st->kind == MFL_STMT_VAR;
+    s->file = st->line == 0 ? -1 : c->file;
     s->type = type;
     if (c->sym_tail == NULL) {
         c->res->symbols = s;
@@ -389,9 +452,17 @@ static int may_declare(Checker *c, MflText name, int line, int column, int globa
     Local *l;
     MflSymbol *g;
     MflFnSig *f;
+    const ModuleImport *m;
+    char at[300];
     if (builtin_of(name) >= 0) {
         error_pos(c, line, column, "'%.*s' is a built-in function and cannot be redefined",
                   TEXT_ARG(name));
+        return 0;
+    }
+    m = imported_module(c, name);
+    if (m != NULL) {
+        error_pos(c, line, column, "'%.*s' is the name of the module imported at %d:%d",
+                  TEXT_ARG(name), m->line, m->column);
         return 0;
     }
     if (!global) {
@@ -411,14 +482,14 @@ static int may_declare(Checker *c, MflText name, int line, int column, int globa
         return 0;
     }
     if (g != NULL) {
-        error_pos(c, line, column, "'%.*s' is already declared at %d:%d", TEXT_ARG(name), g->line,
-                  g->column);
+        error_pos(c, line, column, "'%.*s' is already declared at %s", TEXT_ARG(name),
+                  where(c, g->file, g->line, g->column, at, sizeof at));
         return 0;
     }
     f = find_function(c, name);
     if (f != NULL) {
-        error_pos(c, line, column, "'%.*s' is already declared as a function at %d:%d",
-                  TEXT_ARG(name), f->line, f->column);
+        error_pos(c, line, column, "'%.*s' is already declared as a function at %s",
+                  TEXT_ARG(name), where(c, f->file, f->line, f->column, at, sizeof at));
         return 0;
     }
     return 1;
@@ -961,12 +1032,261 @@ static MflType check_builtin_call(Checker *c, MflExpr *e, int builtin)
     }
 }
 
+/* `module.name` where `module` is a module imported in this file (and not
+ * shadowed by a local). Returns the native number, -1 if not a module
+ * member, -2 after reporting an error. */
+static int module_member(Checker *c, MflExpr *member)
+{
+    MflExpr *obj = member->as.member.object;
+    int idx;
+    if (obj->kind != MFL_EXPR_IDENT || find_local(c, obj->as.text) != NULL) {
+        return -1;
+    }
+    if (imported_module(c, obj->as.text) == NULL) {
+        if (mfl_native_module_exists(obj->as.text) && find_global(c, obj->as.text) == NULL) {
+            error_at(c, obj, "module '%.*s' is not imported; add 'import %.*s' at the top of the file",
+                     TEXT_ARG(obj->as.text), TEXT_ARG(obj->as.text));
+            return -2;
+        }
+        return -1;
+    }
+    idx = mfl_native_find(obj->as.text, member->as.member.name);
+    if (idx < 0) {
+        char names[400];
+        mfl_native_module_members(obj->as.text, names, sizeof names);
+        error_at(c, member, "module '%.*s' has no member '%.*s' (it has: %s)", TEXT_ARG(obj->as.text),
+                 TEXT_ARG(member->as.member.name), names);
+        return -2;
+    }
+    obj->type = make_type(MFL_TYPE_UNCHECKED);
+    return idx;
+}
+
+static MflType native_arg_error(Checker *c, MflExpr *a, const MflNative *n, int i, const char *want)
+{
+    char got[TYPE_BUF];
+    fmt_type(a->type, got);
+    error_at(c, a, "argument %d of '%s.%s' ('%s') must be %s, found %s", i + 1, n->module, n->name,
+             n->params[i].name, want, got);
+    return fail(a);
+}
+
+static void native_dim_want(const MflNativeParam *p, char *buf, size_t size)
+{
+    char d[TYPE_BUF];
+    mfl_dim_format(p->dim, d, sizeof d);
+    if (p->unit != NULL && strcmp(p->unit, d) != 0) {
+        snprintf(buf, size, "Quantity[%s] (%s)", d, p->unit);
+    } else {
+        snprintf(buf, size, "Quantity[%s]", d);
+    }
+}
+
+static int is_temperature(MflType t)
+{
+    MflDim k = mfl_dim_none();
+    k.exp[4] = 1;
+    return is_number(t) && mfl_dim_equal(t.dim, k);
+}
+
+/* A literal written in delta_degC (a temperature difference). */
+static int is_difference_literal(const MflExpr *a)
+{
+    char u[64];
+    return a->kind == MFL_EXPR_QUANTITY && mfl_unit_text(a->as.quantity.unit, u, sizeof u) &&
+           strcmp(u, "delta_degC") == 0;
+}
+
+/* Checks one argument against a native parameter. 0 = error reported. */
+static int check_native_arg(Checker *c, const MflNative *n, int i, MflExpr *a, const MflExpr *first)
+{
+    const MflNativeParam *p = &n->params[i];
+    MflType t = a->type;
+    char want[TYPE_BUF * 2];
+    int k;
+
+    if (is_error(t) || is_any(t)) {
+        return !is_error(t);
+    }
+    switch (p->kind) {
+    case MFL_NP_NUMBER:
+    case MFL_NP_COUNT:
+        if (!is_number(t) || !mfl_dim_is_none(t.dim) || t.affine) {
+            native_arg_error(c, a, n, i, p->kind == MFL_NP_COUNT ? "a plain Number (a count)"
+                                                                 : "a plain Number (dimensionless)");
+            return 0;
+        }
+        return 1;
+    case MFL_NP_QUANTITY:
+        if (!is_number(t)) {
+            native_arg_error(c, a, n, i, "a number or quantity");
+            return 0;
+        }
+        if (t.affine) {
+            error_at(c, a, "argument %d of '%s.%s' ('%s') cannot be an absolute temperature in degC; "
+                           "convert it with .to(K) first", i + 1, n->module, n->name, p->name);
+            return 0;
+        }
+        if (n->flags & MFL_NF_EVEN_DIM) {
+            for (k = 0; k < MFL_DIM_COUNT; k++) {
+                if (t.dim.exp[k] % 2 != 0) {
+                    native_arg_error(c, a, n, i, "a quantity whose dimension has even exponents "
+                                                 "(e.g. m^2, m^2/s^2)");
+                    return 0;
+                }
+            }
+        }
+        return 1;
+    case MFL_NP_ANY_NUMBER:
+        if (!is_number(t)) {
+            native_arg_error(c, a, n, i, "a number or quantity");
+            return 0;
+        }
+        return 1;
+    case MFL_NP_SAME_AS_FIRST:
+        if (first == NULL || !is_number(first->type)) {
+            return 1;
+        }
+        if (!is_number(t) || !mfl_dim_equal(t.dim, first->type.dim) ||
+            t.affine != first->type.affine) {
+            fmt_type(first->type, want);
+            strncat(want, " (like argument 1)", sizeof want - strlen(want) - 1);
+            native_arg_error(c, a, n, i, want);
+            return 0;
+        }
+        return 1;
+    case MFL_NP_DIM:
+        if (!is_number(t) || !mfl_dim_equal(t.dim, p->dim) || t.affine) {
+            native_dim_want(p, want, sizeof want);
+            native_arg_error(c, a, n, i, want);
+            return 0;
+        }
+        return 1;
+    case MFL_NP_TEMPERATURE:
+        if (!is_temperature(t)) {
+            native_arg_error(c, a, n, i, "an absolute temperature (K or degC)");
+            return 0;
+        }
+        if (is_difference_literal(a)) {
+            error_at(c, a, "argument %d of '%s.%s' ('%s') must be an absolute temperature (K or "
+                           "degC), found a temperature difference in delta_degC",
+                     i + 1, n->module, n->name, p->name);
+            return 0;
+        }
+        return 1;
+    case MFL_NP_NUMBERS:
+    case MFL_NP_DIM_ARRAY:
+    case MFL_NP_TEMPERATURES:
+        if (t.kind != MFL_TYPE_ARRAY) {
+            native_arg_error(c, a, n, i, "an array");
+            return 0;
+        }
+        if (t.elem == NULL || is_any(*t.elem) || is_error(*t.elem)) {
+            return 1;
+        }
+        if (p->kind == MFL_NP_NUMBERS) {
+            if (!is_number(*t.elem)) {
+                native_arg_error(c, a, n, i, "an array of numbers");
+                return 0;
+            }
+            if ((n->flags & MFL_NF_NO_AFFINE) && t.elem->affine) {
+                error_at(c, a, "%s.%s cannot add absolute temperatures (degC); convert them with "
+                               ".to(K) first", n->module, n->name);
+                return 0;
+            }
+        } else if (p->kind == MFL_NP_DIM_ARRAY) {
+            if (!is_number(*t.elem) || !mfl_dim_equal(t.elem->dim, p->dim) || t.elem->affine) {
+                char d[TYPE_BUF];
+                native_dim_want(p, d, sizeof d);
+                snprintf(want, sizeof want, "Array[%s]", d);
+                native_arg_error(c, a, n, i, want);
+                return 0;
+            }
+        } else if (!is_temperature(*t.elem)) {
+            native_arg_error(c, a, n, i, "an array of absolute temperatures (K or degC)");
+            return 0;
+        }
+        return 1;
+    }
+    return 1;
+}
+
+static MflType check_native_call(Checker *c, MflExpr *e, int idx)
+{
+    const MflNative *n = mfl_native_get(idx);
+    MflExpr *callee = e->as.call.callee;
+    MflExpr *a;
+    MflExpr *first = e->as.call.args;
+    int i = 0;
+    int ok = 1;
+
+    callee->ref_kind = MFL_REF_NATIVE;
+    callee->ref_index = idx;
+    check_args(c, e);
+    if (n->result == MFL_NR_CONSTANT) {
+        error_at(c, e, "'%s.%s' is a constant, not a function: write %s.%s without '()'", n->module,
+                 n->name, n->module, n->name);
+        return fail(e);
+    }
+    if (e->as.call.argc != n->arity) {
+        error_at(c, e, "'%s.%s' takes %d argument%s, but %d %s given", n->module, n->name, n->arity,
+                 n->arity == 1 ? "" : "s", e->as.call.argc, e->as.call.argc == 1 ? "was" : "were");
+        return fail(e);
+    }
+    for (a = e->as.call.args; a != NULL; a = a->next, i++) {
+        if (!check_native_arg(c, n, i, a, first)) {
+            ok = 0;
+        }
+    }
+    if (!ok) {
+        return fail(e);
+    }
+    switch (n->result) {
+    case MFL_NR_NIL:
+        return set_type(e, make_type(MFL_TYPE_NIL));
+    case MFL_NR_NUMBER:
+        return set_type(e, plain_number());
+    case MFL_NR_DIM:
+        return set_type(e, number_type(n->result_dim, 0));
+    case MFL_NR_ARRAY_OF_FIRST:
+        return set_type(e, array_type(c, first->type));
+    case MFL_NR_ELEM_OF_FIRST:
+        if (first->type.kind == MFL_TYPE_ARRAY && first->type.elem != NULL) {
+            return set_type(e, *first->type.elem);
+        }
+        return set_type(e, make_type(MFL_TYPE_ANY));
+    case MFL_NR_SQRT_FIRST:
+        if (is_number(first->type)) {
+            MflDim d = mfl_dim_none();
+            for (i = 0; i < MFL_DIM_COUNT; i++) {
+                d.exp[i] = (signed char)(first->type.dim.exp[i] / 2);
+            }
+            return set_type(e, number_type(d, 0));
+        }
+        return set_type(e, make_type(MFL_TYPE_ANY));
+    case MFL_NR_DIM_ARRAY:
+        return set_type(e, array_type(c, number_type(n->result_dim, 0)));
+    default:
+        return set_type(e, make_type(MFL_TYPE_ANY));
+    }
+}
+
 static MflType check_call(Checker *c, MflExpr *e)
 {
     MflExpr *callee = e->as.call.callee;
     char ts[TYPE_BUF];
     MflType t;
 
+    if (callee->kind == MFL_EXPR_MEMBER) {
+        int idx = module_member(c, callee);
+        if (idx == -2) {
+            check_args(c, e);
+            return fail(e);
+        }
+        if (idx >= 0) {
+            return check_native_call(c, e, idx);
+        }
+    }
     if (callee->kind == MFL_EXPR_MEMBER && is_method_name(callee->as.member.name)) {
         return check_method(c, e);
     }
@@ -1003,6 +1323,13 @@ static MflType check_call(Checker *c, MflExpr *e)
     return fail(e);
 }
 
+static MflType not_imported(Checker *c, MflExpr *e, int file)
+{
+    error_at(c, e, "'%.*s' is declared in %s, which this file does not import", TEXT_ARG(e->as.text),
+             file_name(c, file));
+    return fail(e);
+}
+
 static MflType check_ident(Checker *c, MflExpr *e)
 {
     Local *l = find_local(c, e->as.text);
@@ -1013,13 +1340,24 @@ static MflType check_ident(Checker *c, MflExpr *e)
         e->ref_index = l->slot;
         return set_type(e, l->type);
     }
+    if (imported_module(c, e->as.text) != NULL) {
+        error_at(c, e, "'%.*s' is a module: use its functions, e.g. %.*s.name(...)",
+                 TEXT_ARG(e->as.text), TEXT_ARG(e->as.text));
+        return fail(e);
+    }
     g = find_global(c, e->as.text);
+    if (g != NULL && !visible(c, g->file)) {
+        return not_imported(c, e, g->file);
+    }
     if (g != NULL) {
         e->ref_kind = MFL_REF_GLOBAL;
         e->ref_index = global_slot(c, g);
         return set_type(e, g->type);
     }
     f = find_function(c, e->as.text);
+    if (f != NULL && !visible(c, f->file)) {
+        return not_imported(c, e, f->file);
+    }
     if (f != NULL) {
         MflType t = make_type(MFL_TYPE_FUNCTION);
         t.fn = f;
@@ -1150,7 +1488,23 @@ static MflType check_expr(Checker *c, MflExpr *e)
     case MFL_EXPR_CALL:
         return check_call(c, e);
     case MFL_EXPR_MEMBER: {
-        MflType t = check_expr(c, e->as.member.object);
+        MflType t;
+        int idx = module_member(c, e);
+        if (idx == -2) {
+            return fail(e);
+        }
+        if (idx >= 0) {
+            const MflNative *n = mfl_native_get(idx);
+            if (n->result != MFL_NR_CONSTANT) {
+                error_at(c, e, "'%s.%s' is a function; call it, e.g. %s.%s(...)", n->module, n->name,
+                         n->module, n->name);
+                return fail(e);
+            }
+            e->ref_kind = MFL_REF_CONSTANT;
+            e->ref_index = idx;
+            return set_type(e, plain_number());
+        }
+        t = check_expr(c, e->as.member.object);
         if (is_error(t)) {
             return fail(e);
         }
@@ -1268,12 +1622,24 @@ static void check_assignment(Checker *c, MflStmt *s)
                 return;
             }
         } else {
+            char at[300];
+            if (!visible(c, g->file)) {
+                not_imported(c, target, g->file);
+                return;
+            }
             target->ref_kind = MFL_REF_GLOBAL;
             target->ref_index = global_slot(c, g);
             decl = g->type;
             is_var = g->is_var;
             dline = g->line;
             dcol = g->column;
+            if (g->file >= 0 && g->file != c->file) {
+                error_at(c, target, "cannot assign to '%.*s': it belongs to %s (declared at %s); "
+                                    "only code in that file may change it",
+                         TEXT_ARG(name), file_name(c, g->file),
+                         where(c, g->file, g->line, g->column, at, sizeof at));
+                return;
+            }
             if (g->line == 0) {
                 error_at(c, target, "cannot assign to '%.*s': it is an input provided by the host program",
                          TEXT_ARG(name));
@@ -1385,6 +1751,46 @@ static void check_return(Checker *c, MflStmt *s)
     }
 }
 
+/* import name (module); file imports were resolved by the loader. */
+static void check_import(Checker *c, MflStmt *s)
+{
+    const ModuleImport *prev;
+    if (s->import_path) {
+        if (c->program == NULL || c->program->file_count == 0) {
+            error_at(c, s, "file imports need the program loader (compiler/loader.h)");
+        }
+        return;
+    }
+    if (!mfl_native_module_exists(s->name)) {
+        error_at(c, s, "unknown module '%.*s' (available modules: %s; to import a file, write "
+                       "import \"%.*s.mfl\")",
+                 TEXT_ARG(s->name), mfl_native_module_list(), TEXT_ARG(s->name));
+        return;
+    }
+    prev = imported_module(c, s->name);
+    if (prev != NULL) {
+        error_at(c, s, "module '%.*s' is already imported at %d:%d", TEXT_ARG(s->name), prev->line,
+                 prev->column);
+        return;
+    }
+    if (c->module_count == c->module_cap) {
+        int cap = c->module_cap ? c->module_cap * 2 : 8;
+        ModuleImport *p = (ModuleImport *)realloc(c->modules, (size_t)cap * sizeof *p);
+        if (p == NULL) {
+            c->res->out_of_memory = 1;
+            c->stop = 1;
+            return;
+        }
+        c->modules = p;
+        c->module_cap = cap;
+    }
+    c->modules[c->module_count].file = c->file;
+    c->modules[c->module_count].name = s->name;
+    c->modules[c->module_count].line = s->line;
+    c->modules[c->module_count].column = s->column;
+    c->module_count++;
+}
+
 static void check_stmt(Checker *c, MflStmt *s)
 {
     switch (s->kind) {
@@ -1423,6 +1829,9 @@ static void check_stmt(Checker *c, MflStmt *s)
         break;
     case MFL_STMT_BLOCK:
         check_block(c, s->body);
+        break;
+    case MFL_STMT_IMPORT:
+        check_import(c, s);
         break;
     }
 }
@@ -1474,8 +1883,10 @@ static void collect_function(Checker *c, MflStmt *s)
         return;
     }
     if (find_function(c, s->name) != NULL) {
-        error_at(c, s, "function '%.*s' is already declared at %d:%d", TEXT_ARG(s->name),
-                 find_function(c, s->name)->line, find_function(c, s->name)->column);
+        char at[300];
+        const MflFnSig *f = find_function(c, s->name);
+        error_at(c, s, "function '%.*s' is already declared at %s", TEXT_ARG(s->name),
+                 where(c, f->file, f->line, f->column, at, sizeof at));
         return;
     }
     if (c->res->function_count >= 65535) {
@@ -1495,6 +1906,7 @@ static void collect_function(Checker *c, MflStmt *s)
     sig->arity = s->param_count;
     sig->line = s->line;
     sig->column = s->column;
+    sig->file = c->file;
     sig->decl = s;
     sig->params = (MflType *)mfl_arena_alloc(&c->res->arena, (size_t)(s->param_count + 1) * sizeof(MflType));
     sig->param_names = (MflText *)mfl_arena_alloc(&c->res->arena,
@@ -1536,6 +1948,7 @@ static void check_function_body(Checker *c, MflFnSig *sig)
     int i;
 
     c->fn = sig;
+    c->file = sig->file;
     c->local_count = 0;
     c->depth = 0;
     c->next_slot = 0;
@@ -1566,8 +1979,11 @@ static void sort_diagnostics(MflCheckResult *res)
     while (d != NULL) { /* stable insertion sort: lists are short (<= 50) */
         MflDiagnostic *next = d->next;
         MflDiagnostic **at = &sorted;
-        while (*at != NULL && ((*at)->line < d->line ||
-                               ((*at)->line == d->line && (*at)->column <= d->column))) {
+        while (*at != NULL &&
+               ((*at)->file < d->file ||
+                ((*at)->file == d->file &&
+                 ((*at)->line < d->line ||
+                  ((*at)->line == d->line && (*at)->column <= d->column))))) {
             at = &(*at)->next;
         }
         d->next = *at;
@@ -1598,6 +2014,7 @@ int mfl_check_with_inputs(MflProgram *program, const MflCheckInput *inputs, size
     mfl_arena_init(&out->arena, memory_limit);
     memset(&c, 0, sizeof c);
     c.res = out;
+    c.program = program;
 
     for (i = 0; i < input_count && !c.stop; i++) {
         MflStmt fake;
@@ -1609,11 +2026,13 @@ int mfl_check_with_inputs(MflProgram *program, const MflCheckInput *inputs, size
     /* 1. function signatures */
     for (s = program->first; s != NULL && !c.stop; s = s->next) {
         if (s->kind == MFL_STMT_FN) {
+            c.file = s->file;
             collect_function(&c, s);
         }
     }
     /* 2. top-level code (locals of top-level blocks belong to the main frame) */
     for (s = program->first; s != NULL && !c.stop; s = s->next) {
+        c.file = s->file;
         check_stmt(&c, s);
     }
     program->main_frame_size = c.max_slot;
@@ -1622,6 +2041,7 @@ int mfl_check_with_inputs(MflProgram *program, const MflCheckInput *inputs, size
         check_function_body(&c, out->functions[k]);
     }
     free(c.locals);
+    free(c.modules);
     sort_diagnostics(out);
     return !out->out_of_memory && out->diagnostic_count == 0;
 }

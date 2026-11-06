@@ -237,6 +237,10 @@ static void print_stmt(const MflStmt *s, MflWriteFn w, void *ctx)
     case MFL_STMT_BLOCK:
         print_block(s->body, w, ctx);
         return; /* print_block closes its own parenthesis */
+    case MFL_STMT_IMPORT:
+        put(w, ctx, "(import ");
+        w(ctx, s->name.start, s->name.length);
+        break;
     }
     put(w, ctx, ")");
 }

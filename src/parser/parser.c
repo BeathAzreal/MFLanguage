@@ -30,6 +30,7 @@ typedef struct {
     int             depth;
     int             block_depth; /* open '{' blocks of statements */
     int             fn_depth;    /* inside a function body */
+    int             seen_code;   /* a top-level statement other than 'import' was parsed */
     MflExpr         oom_expr;
 } Parser;
 
@@ -1040,9 +1041,33 @@ static MflStmt *parse_statement(Parser *p)
     case MFL_TOK_ELSE:
         error_at(p, &start, "'else' without a matching 'if'");
         return NULL;
-    case MFL_TOK_IMPORT:
-        error_at(p, &start, "'import' is not supported yet (modules are planned after v0.2)");
-        return NULL;
+    case MFL_TOK_IMPORT: {
+        int is_path;
+        advance(p);
+        if (p->block_depth > 0 || p->fn_depth > 0) {
+            error_at(p, &start, "'import' is only allowed at the top level of a file");
+            return NULL;
+        }
+        if (p->seen_code) {
+            error_at(p, &start,
+                     "'import' must come before the other statements of the file (only "
+                     "comments and other imports may precede it)");
+            return NULL;
+        }
+        if (!check(p, MFL_TOK_IDENT) && !check(p, MFL_TOK_STRING)) {
+            error_expected(p, "a module name (import numerical) or a file path in quotes "
+                              "(import \"materials.mfl\") after 'import'");
+            return NULL;
+        }
+        is_path = check(p, MFL_TOK_STRING);
+        advance(p);
+        s = new_stmt(p, MFL_STMT_IMPORT, &start);
+        if (s != NULL) {
+            s->name = text_of(&p->prev);
+            s->import_path = is_path;
+        }
+        break;
+    }
     default: {
         MflExpr *e = parse_expr(p);
         if (!p->panic && check(p, MFL_TOK_EQ)) {
@@ -1115,6 +1140,9 @@ int mfl_parse(const char *src, size_t length, size_t memory_limit, MflParseResul
         MflStmt *s;
         if (match(&p, MFL_TOK_NEWLINE) || match(&p, MFL_TOK_SEMICOLON)) {
             continue;
+        }
+        if (!check(&p, MFL_TOK_IMPORT)) {
+            p.seen_code = 1;
         }
         s = parse_statement(&p);
         if (p.panic) {

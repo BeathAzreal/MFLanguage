@@ -1,0 +1,30 @@
+# v0.3: modules math and numerical (docs/language-spec.md section 13).
+import numerical
+import math
+
+# Uniform meshes: the points keep the unit of the start value; the last
+# point is exactly the stop value (converted to that unit).
+print(numerical.linspace(0 mm, 100 mm, 5))
+print(numerical.linspace(0 mm, 0.1 m, 3))
+print(numerical.linspace(1, 2, 2))
+print(numerical.linspace(20 degC, 100 degC, 3))
+print(len(numerical.linspace(0 m, 1 m, 101)))
+
+# Sum and mean: same unit -> keeps it; mixed units -> coherent SI.
+print(numerical.sum([1 mm, 2 mm, 3 mm]), numerical.mean([1 mm, 2 mm, 3 mm]))
+print(numerical.sum([1 m, 2 mm]), numerical.mean([100 mm, 0.2 m]))
+print(numerical.sum([0.5 kJ, 500 J]).to(kJ))
+print(numerical.mean([20 degC, 30 degC]), numerical.mean([300 K, 310 K]))
+print(numerical.sum([1, 2, 3.5]), numerical.mean([2]))
+# Compensated summation: 0.1 ten times is exactly 1 here.
+print(numerical.sum([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1]) == 1)
+
+# Static types follow the arguments.
+let x: Array[Quantity[m]] = numerical.linspace(0 mm, 1 m, 3)
+let total: Quantity[m] = numerical.sum(x)
+print(total)
+
+# math: dimensionless arguments; sqrt halves the dimension.
+print(math.sin(math.pi / 2), math.cos(0), math.exp(0), math.log(1))
+print(math.sqrt(16 m^2), math.sqrt(2.25e-6 m^2/s^2).to(mm/s), math.sqrt(2))
+print(math.pi)

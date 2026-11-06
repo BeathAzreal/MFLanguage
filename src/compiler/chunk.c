@@ -19,6 +19,7 @@ void mfl_chunk_free(MflChunk *c)
     free(c->code);
     free(c->lines);
     free(c->columns);
+    free(c->files);
     free(c->constants);
     free(c->units);
     free(c->types);
@@ -59,9 +60,11 @@ int mfl_chunk_emit(MflChunk *c, unsigned char byte, int line, int column)
 {
     if (!grow(c, (void **)&c->code, &c->code_cap, c->code_len + 1, 1) ||
         !grow(c, (void **)&c->lines, &c->lines_cap, c->code_len + 1, sizeof(int)) ||
-        !grow(c, (void **)&c->columns, &c->columns_cap, c->code_len + 1, sizeof(int))) {
+        !grow(c, (void **)&c->columns, &c->columns_cap, c->code_len + 1, sizeof(int)) ||
+        !grow(c, (void **)&c->files, &c->files_cap, c->code_len + 1, sizeof(int))) {
         return 0;
     }
+    c->files[c->code_len] = c->cur_file;
     c->code[c->code_len] = byte;
     c->lines[c->code_len] = line;
     c->columns[c->code_len] = column;

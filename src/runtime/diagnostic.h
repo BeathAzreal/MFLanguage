@@ -10,6 +10,7 @@
 typedef struct MflDiagnostic MflDiagnostic;
 
 struct MflDiagnostic {
+    int            file;   /* index in the program's file table (0: the main file) */
     int            line;
     int            column;
     const char    *message; /* owned by the arena of the producing stage */

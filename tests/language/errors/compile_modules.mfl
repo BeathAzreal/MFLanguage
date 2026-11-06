@@ -1,0 +1,18 @@
+# v0.3: errors found before running in module calls and imports.
+import numerical
+import math
+import welding
+import numerical
+let a = numerical.linspace(0 m, 1 s, 3)
+let b = numerical.sum([20 degC, 30 degC])
+let c = numerical.foo(1)
+let d = numerical.linspace(0 m, 1 m)
+let e = math.sin(1 m)
+let f = math.sqrt(2 m)
+let g = numerical.sum(3)
+let h = numerical.mean(["a", "b"])
+let i = math.pi()
+let j = numerical.sum
+let k = numerical
+let math = 3
+let l = numerical.linspace(0 m, 1 m, 2 s)

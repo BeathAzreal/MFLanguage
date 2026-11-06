@@ -1,0 +1,3 @@
+var counter = 0
+fn bump() { counter = counter + 1 }
+fn peek() { return main_only }

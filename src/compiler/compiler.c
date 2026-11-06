@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "modules/natives.h"
 #include "runtime/number.h"
 #include "runtime/units.h"
 
@@ -59,6 +60,7 @@ static void error_at(Compiler *c, int line, int column, const char *fmt, ...)
         return;
     }
     memcpy(msg, text, len + 1);
+    d->file = c->chunk->cur_file;
     d->line = line;
     d->column = column;
     d->message = msg;
@@ -140,7 +142,7 @@ static void emit_byte(Compiler *c, unsigned char b, int line, int column)
 static size_t emit2(Compiler *c, MflOpcode op, unsigned a, unsigned b, int line, int column)
 {
     size_t at;
-    long effect = stack_effect(op, a);
+    long effect = op == MFL_OP_CALL_NATIVE ? 1 - (long)b : stack_effect(op, a);
     int nops = mfl_opcode_operands(op);
     emit_byte(c, (unsigned char)op, line, column);
     at = c->chunk->code_len;
@@ -495,6 +497,18 @@ static void compile_call(Compiler *c, const MflExpr *e)
     const MflExpr *callee = e->as.call.callee;
     const MflExpr *a;
 
+    if (callee->kind == MFL_EXPR_MEMBER && callee->ref_kind == MFL_REF_NATIVE) {
+        if (e->as.call.argc > 255) {
+            error_at(c, e->line, e->column, "too many arguments (limit 255)");
+            return;
+        }
+        for (a = e->as.call.args; a != NULL; a = a->next) {
+            compile_expr(c, a);
+        }
+        emit2(c, MFL_OP_CALL_NATIVE, (unsigned)callee->ref_index, (unsigned)e->as.call.argc,
+              e->line, e->column);
+        return;
+    }
     if (callee->kind == MFL_EXPR_MEMBER) { /* x.to(u) / x.value_in(u) */
         MflText name = callee->as.member.name;
         int to = name.length == 2 && memcmp(name.start, "to", 2) == 0;
@@ -610,6 +624,14 @@ static void compile_expr(Compiler *c, const MflExpr *e)
         compile_expr(c, e->as.index.index);
         EMIT(c, MFL_OP_INDEX, 0, e);
         break;
+    case MFL_EXPR_MEMBER:
+        if (e->ref_kind == MFL_REF_CONSTANT && mfl_native_get(e->ref_index) != NULL) {
+            v = number_value(mfl_native_get(e->ref_index)->constant, MFL_NO_UNIT, mfl_dim_none(), 0);
+            EMIT(c, MFL_OP_CONST, add_constant(c, v, e), e);
+            break;
+        }
+        error_at(c, e->line, e->column, "internal error: member expression cannot be compiled");
+        break;
     default:
         error_at(c, e->line, e->column, "internal error: expression cannot be compiled");
         break;
@@ -720,7 +742,8 @@ static void compile_stmt(Compiler *c, const MflStmt *s)
         EMIT(c, MFL_OP_POP, 0, s);
         break;
     case MFL_STMT_FN:
-        break; /* compiled separately */
+    case MFL_STMT_IMPORT:
+        break; /* functions are compiled separately; imports produce no code */
     case MFL_STMT_RETURN:
         if (s->value != NULL) {
             compile_expr(c, s->value);
@@ -916,14 +939,17 @@ int mfl_compile(const MflProgram *program, const MflCheckResult *checked, size_t
     c.depth = (size_t)program->main_frame_size;
     c.max_depth = c.depth;
     for (s = program->first; s != NULL && !c.failed; s = s->next) {
+        out->chunk.cur_file = s->file;
         compile_stmt(&c, s);
     }
+    out->chunk.cur_file = 0;
     emit(&c, MFL_OP_HALT, 0, 0, 0);
     out->chunk.main_max_stack = c.max_depth + 1;
     out->chunk.max_stack = out->chunk.main_max_stack;
 
     /* Functions. */
     for (k = 0; k < checked->function_count && !c.failed; k++) {
+        out->chunk.cur_file = checked->functions[k]->file;
         compile_function(&c, checked->functions[k], &out->chunk.functions[k]);
     }
     oom(&c);

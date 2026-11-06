@@ -1,0 +1,10 @@
+# Structural steel, room temperature (Incropera, Table A.1, AISI 1010).
+import "sub/constants.mfl"
+let k_steel = 63.9 W/(m*K)
+let rho_steel = 7832 kg/m^3
+let cp_steel = 434 J/(kg*K)
+fn diffusivity(k: Quantity[W/(m*K)], rho: Quantity[kg/m^3],
+               cp: Quantity[J/(kg*K)]) -> Quantity[m^2/s] {
+    return k / (rho * cp)
+}
+print("steel.mfl loaded")

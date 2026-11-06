@@ -19,6 +19,7 @@
 
 #include "compiler/checker.h"
 #include "compiler/compiler.h"
+#include "compiler/loader.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "runtime/units.h"
@@ -54,6 +55,7 @@ struct MflState {
     size_t    error_cap;
     int       error_oom; /* the message itself could not be stored */
     unsigned long long max_steps;
+    int       file_imports; /* import "file.mfl" allowed (v0.3) */
 };
 
 
@@ -67,7 +69,7 @@ struct MflScript {
     char            *source;
     size_t           length;
     char            *name; /* for run-time error messages */
-    MflParseResult   parse;
+    MflLoadResult    load;
     MflCheckResult   check;
     MflCompileResult comp;
     InputSlot       *inputs;
@@ -119,12 +121,21 @@ static MflStatus fail(MflState *S, MflStatus status, const char *fmt, ...)
     return status;
 }
 
-static void append_diagnostics(MflState *S, const char *source_name, const MflDiagnostic *d)
+static const char *file_label(const char *source_name, const MflLoadResult *ld, int file)
 {
-    char line[600];
+    if (ld != NULL && ld->names != NULL && file >= 0 && file < ld->file_count) {
+        return ld->names[file];
+    }
+    return source_name;
+}
+
+static void append_diagnostics(MflState *S, const char *source_name, const MflLoadResult *ld,
+                               const MflDiagnostic *d)
+{
+    char line[1600];
     for (; d != NULL; d = d->next) {
-        int n = snprintf(line, sizeof line, "%s:%d:%d: error: %s\n", source_name, d->line,
-                         d->column, d->message);
+        int n = snprintf(line, sizeof line, "%s:%d:%d: error: %s\n",
+                         file_label(source_name, ld, d->file), d->line, d->column, d->message);
         if (n > 0) {
             error_append(S, line, (size_t)n < sizeof line ? (size_t)n : sizeof line - 1);
         }
@@ -273,6 +284,13 @@ MflState *mfl_state_new(const MflConfig *config)
     return S;
 }
 
+void mfl_set_file_imports(MflState *S, int enabled)
+{
+    if (S != NULL) {
+        S->file_imports = enabled != 0;
+    }
+}
+
 void mfl_set_instruction_limit(MflState *S, unsigned long long max_instructions)
 {
     if (S != NULL) {
@@ -419,7 +437,7 @@ void mfl_script_free(MflScript *script)
     }
     mfl_compile_free(&script->comp);
     mfl_check_free(&script->check);
-    mfl_parse_free(&script->parse);
+    mfl_load_free(&script->load);
     for (i = 0; i < script->input_count; i++) {
         free(script->inputs[i].name);
     }
@@ -478,25 +496,26 @@ static MflScript *compile_script(MflState *S, const char *source, size_t length,
         decl[i].type.dim = S->inputs[i].dim;
     }
 
-    if (!mfl_parse(sc->source, length, limit, &sc->parse)) {
-        if (sc->parse.out_of_memory) {
+    if (!mfl_load(sc->source, length, sc->name, S->file_imports ? mfl_read_source_file : NULL,
+                  NULL, limit, &sc->load)) {
+        if (sc->load.out_of_memory) {
             goto oom;
         }
-        append_diagnostics(S, name, sc->parse.diagnostics);
+        append_diagnostics(S, name, &sc->load, sc->load.diagnostics);
         goto fail_program;
     }
-    if (!mfl_check_with_inputs(&sc->parse.program, decl, S->input_count, limit, &sc->check)) {
+    if (!mfl_check_with_inputs(&sc->load.program, decl, S->input_count, limit, &sc->check)) {
         if (sc->check.out_of_memory) {
             goto oom;
         }
-        append_diagnostics(S, name, sc->check.diagnostics);
+        append_diagnostics(S, name, &sc->load, sc->check.diagnostics);
         goto fail_program;
     }
-    if (!mfl_compile(&sc->parse.program, &sc->check, limit, &sc->comp)) {
+    if (!mfl_compile(&sc->load.program, &sc->check, limit, &sc->comp)) {
         if (sc->comp.out_of_memory) {
             goto oom;
         }
-        append_diagnostics(S, name, sc->comp.diagnostics);
+        append_diagnostics(S, name, &sc->load, sc->comp.diagnostics);
         goto fail_program;
     }
     /* Unit-table entries through which the host values enter the VM. */
@@ -603,8 +622,9 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
         free(init);
         free(snap);
         free(results);
-        return fail(S, MFL_ERR_RUNTIME, "%s:%d:%d: runtime error: %s\n", sc->name, verr.line,
-                    verr.column, verr.message);
+        return fail(S, MFL_ERR_RUNTIME, "%s:%d:%d: runtime error: %s\n",
+                    file_label(sc->name, &sc->load, verr.file), verr.line, verr.column,
+                    verr.message);
     }
     if (vs != MFL_VM_OK) {
         free(init);
@@ -632,6 +652,9 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
             MflScale from = snap[i].unit == MFL_NO_UNIT ? mfl_scale_one()
                                                         : chunk->units[snap[i].unit].scale;
             r->si = mfl_scale_convert(snap[i].as.number, from, mfl_scale_one());
+            if (snap[i].unit != MFL_NO_UNIT && chunk->units[snap[i].unit].affine) {
+                r->si += chunk->units[snap[i].unit].offset; /* degC: absolute value in K */
+            }
         }
     }
     free_results(S);

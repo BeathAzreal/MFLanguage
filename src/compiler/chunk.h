@@ -129,6 +129,7 @@ typedef struct {
     X(CHECK_LIKE_GLOBAL, "CHECK_LIKE_GLOBAL", 2) /* g, c: top must match globals[g]   */ \
     X(CHECK_LIKE_LOCAL, "CHECK_LIKE_LOCAL", 2)   /* l, c: top must match slot l       */ \
     X(RANGE_STEP, "RANGE_STEP", 0)                                                      \
+    X(CALL_NATIVE, "CALL_NATIVE", 2)   /* f, n: module function f with n arguments    */ \
     X(HALT, "HALT", 0)
 
 typedef enum {
@@ -142,6 +143,9 @@ typedef struct {
     unsigned char *code;
     int           *lines;   /* source line per code byte */
     int           *columns; /* source column per code byte */
+    int           *files;   /* source file per code byte (v0.3; index in the program's files) */
+    size_t         files_cap;
+    int            cur_file; /* file recorded by mfl_chunk_emit() */
     size_t         code_len;
     size_t         code_cap;
     size_t         lines_cap;

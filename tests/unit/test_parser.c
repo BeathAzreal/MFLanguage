@@ -282,6 +282,13 @@ static void test_v02_syntax(void)
                "1:1 (let b : Bool true)\n1:21 (let s : String \"x\")\n");
 }
 
+static void test_imports(void)
+{
+    EXPECT_AST("import numerical\nimport \"lib/steel.mfl\"\n# comment\nimport math\nlet a = 1",
+               "1:1 (import numerical)\n2:1 (import \"lib/steel.mfl\")\n4:1 (import math)\n"
+               "5:1 (let a 1)\n");
+}
+
 static void test_v02_errors(void)
 {
     EXPECT_DIAGS("return 1", "1:1: 'return' outside a function\n");
@@ -291,7 +298,15 @@ static void test_v02_errors(void)
     EXPECT_DIAGS("if x { fn g() { } }",
                  "1:8: functions can only be declared at the top level (no nested functions in v0.2)\n");
     EXPECT_DIAGS("else { }", "1:1: 'else' without a matching 'if'\n");
-    EXPECT_DIAGS("import welding", "1:1: 'import' is not supported yet (modules are planned after v0.2)\n");
+    EXPECT_DIAGS("let a = 1\nimport numerical",
+                 "2:1: 'import' must come before the other statements of the file (only comments "
+                 "and other imports may precede it)\n");
+    EXPECT_DIAGS("if x { import math }", "1:8: 'import' is only allowed at the top level of a file\n");
+    EXPECT_DIAGS("fn f() { import math }", "1:10: 'import' is only allowed at the top level of a file\n");
+    EXPECT_DIAGS("import 3",
+                 "1:8: expected a module name (import numerical) or a file path in quotes (import "
+                 "\"materials.mfl\") after 'import', found '3'\n");
+    EXPECT_DIAGS("import math numerical", "1:13: expected end of statement (newline or ';'), found 'numerical'\n");
     EXPECT_DIAGS("if x print(1)", "1:6: expected '{' after the condition of 'if', found 'print'\n");
     EXPECT_DIAGS("while x { a", "1:12: expected '}' to close the block opened at 1:9, found end of file\n");
     EXPECT_DIAGS("for 1 in a { }", "1:5: expected loop variable name after 'for', found '1'\n");
@@ -518,6 +533,7 @@ int main(void)
     test_errors();
     test_v02_syntax();
     test_v02_errors();
+    test_imports();
     test_recovery();
     test_positions();
     test_limits();

@@ -1,0 +1,2 @@
+let room = 20 degC
+print("constants.mfl loaded")

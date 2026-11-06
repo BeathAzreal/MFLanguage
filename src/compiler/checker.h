@@ -48,6 +48,7 @@ struct MflFnSig {
     int      ret_annotated;
     int      line;
     int      column;
+    int      file;         /* declaring file (v0.3) */
     MflStmt *decl;
 };
 
@@ -58,6 +59,7 @@ struct MflSymbol {
     int        line;   /* declaration position */
     int        column;
     int        is_var; /* declared with 'var' (mutable) */
+    int        file;   /* declaring file (v0.3); -1 for host inputs */
     MflType    type;
     MflSymbol *next;   /* declaration order */
 };

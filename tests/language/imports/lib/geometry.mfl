@@ -1,0 +1,5 @@
+import "sub/constants.mfl"
+import "../lib/./sub/constants.mfl"
+import numerical
+let mesh = numerical.linspace(0 mm, 100 mm, 5)
+print("geometry.mfl loaded")

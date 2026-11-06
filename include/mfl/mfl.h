@@ -116,6 +116,14 @@ MflStatus mfl_set_number(MflState *S, const char *name, double value, const char
 /* Removes all inputs. */
 void mfl_clear_inputs(MflState *S);
 
+/* Allows or forbids `import "file.mfl"` in scripts compiled on S (v0.3).
+ * Default: forbidden (0), so a host that runs scripts from untrusted
+ * sources never lets them open files. When allowed, paths are resolved
+ * relative to the directory of the script's source_name, with fopen(),
+ * exactly like the `mfl` command. Module imports (`import numerical`) are
+ * always allowed. */
+void mfl_set_file_imports(MflState *S, int enabled);
+
 /* Limits the number of VM instructions per run (0 = no limit, the
  * default). A run that exceeds it fails with MFL_ERR_RUNTIME, so an
  * endless loop in a model cannot freeze the host (v0.2). */

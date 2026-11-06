@@ -18,8 +18,21 @@ option(MFL_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(MFL_BUILD_EXAMPLES "Build the C embedding example" ON)
 
 # ---------------------------------------------------------------------------
-# Core library. Sources from src/lexer, src/parser, src/compiler, src/vm and
-# src/runtime will be added here as they are implemented.
+# Numerical library (modules/numerical): plain C11 numerics in SI doubles,
+# independent of the parser, the compiler and the VM. The language binding
+# (src/modules) and the embedding API call it.
+# ---------------------------------------------------------------------------
+add_library(mfl_numerical STATIC
+    modules/numerical/vector.c
+)
+target_include_directories(mfl_numerical
+    PUBLIC  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/modules/numerical>
+    PRIVATE ${PROJECT_SOURCE_DIR}/src
+)
+
+# ---------------------------------------------------------------------------
+# Core library: lexer, parser, checker, compiler, VM, runtime, module
+# bindings and the embedding API.
 # ---------------------------------------------------------------------------
 add_library(mfl_core
     src/version.c
@@ -32,6 +45,8 @@ add_library(mfl_core
     src/compiler/checker.c
     src/compiler/chunk.c
     src/compiler/compiler.c
+    src/compiler/loader.c
+    src/modules/natives.c
     src/vm/vm.c
     src/api/mfl_api.c
 )
@@ -60,12 +75,16 @@ function(mfl_set_warnings target)
     endif()
 endfunction()
 
+target_link_libraries(mfl_core PUBLIC mfl_numerical)
+
 mfl_set_warnings(mfl_core)
+mfl_set_warnings(mfl_numerical)
 
 if(NOT MSVC)
     # libm will be required by the numerical runtime.
     find_library(MFL_LIBM m)
     if(MFL_LIBM)
+        target_link_libraries(mfl_numerical PUBLIC ${MFL_LIBM})
         target_link_libraries(mfl_core PUBLIC ${MFL_LIBM})
     endif()
 endif()
@@ -131,7 +150,7 @@ if(MFL_BUILD_TESTS)
     add_executable(test_api tests/unit/test_api.c)
     target_link_libraries(test_api PRIVATE mfl_core)
     mfl_set_warnings(test_api)
-    add_test(NAME api_unit COMMAND test_api)
+    add_test(NAME api_unit COMMAND test_api ${PROJECT_SOURCE_DIR})
 
     # The public header must also compile as C++ (game engines are C++).
     include(CheckLanguage)
@@ -145,6 +164,12 @@ if(MFL_BUILD_TESTS)
     else()
         message(STATUS "MFL: no C++ compiler found; skipping the C++ header test")
     endif()
+
+    # Numerical library tests (modules/numerical, no interpreter involved).
+    add_executable(test_vector tests/numerical/test_vector.c)
+    target_link_libraries(test_vector PRIVATE mfl_numerical)
+    mfl_set_warnings(test_vector)
+    add_test(NAME numerical_vector COMMAND test_vector)
 
     foreach(t number vm)
         add_executable(test_${t} tests/unit/test_${t}.c)
@@ -277,6 +302,16 @@ if(MFL_BUILD_TESTS)
         set_tests_properties(acceptance_${case_name} PROPERTIES
             PASS_REGULAR_EXPRESSION "${case_regex}")
     endforeach()
+    # v0.3 imports: stdout, stderr and exit code of each case.
+    foreach(case "ok|0" "missing|1" "cycle|1" "visibility|1" "runtime_in_import|1" "duplicate|1")
+        string(REPLACE "|" ";" parts "${case}")
+        list(GET parts 0 case_name)
+        list(GET parts 1 case_exit)
+        mfl_add_program_test(import_${case_name} tests/language/imports/${case_name}.mfl
+            tests/language/imports/${case_name}.stdout tests/language/imports/${case_name}.stderr
+            ${case_exit})
+    endforeach()
+
     foreach(base power_as_speed bad_return index_out_of_range)
         mfl_add_program_test(acceptance_${base} tests/language/acceptance/${base}.mfl
             tests/language/acceptance/${base}.stdout tests/language/acceptance/${base}.stderr 1)
