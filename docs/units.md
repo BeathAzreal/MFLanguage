@@ -32,10 +32,12 @@ units except affine temperatures, `offset = 0`.
 | `sin, exp, log, …` | argument must be dimensionless (radians count as dimensionless) |
 | `.to(u)` | `dim(a) == dim(u)` else `DimensionError` |
 
-## 3. Unit registry for v0.1
+## 3. Unit registry (v0.1, extended in v0.2)
 
-> **Implemented** (`src/runtime/units.c`), with the differences noted
-> below: prefixes also apply to `L`; `degC` and `%` are not available yet.
+> **Implemented** (`src/runtime/units.c`). v0.2 adds `degC`, `delta_degC`
+> and `percent`. Differences from the first draft: prefixes also apply to
+> `L`; the percent unit is spelled `percent` (`%` stays the remainder
+> operator).
 
 **Base:** `m, kg, s, A, K, mol, cd`, plus `g`.
 
@@ -67,8 +69,10 @@ Symbols are case-sensitive (`Pa` pascal, `pA` picoampere).
 | h | 3600 s |
 | L | 10⁻³ m³ |
 | bar | 10⁵ Pa |
-| degC | affine, see §5 — **not available in v0.1** (error: use K) |
-| % | 0.01 (dimensionless) — **not available in v0.1** (`%` is the remainder operator) |
+| degC | absolute temperature on the Celsius scale: T[K] = T[degC] + 273.15 (§5); no prefixes; only on its own |
+| delta_degC | temperature difference, = 1 K (§5) |
+| percent | 0.01 (dimensionless); `%` is the remainder operator |
+| degF, delta_degF | reserved: reported as "not supported" (use K or degC) |
 
 Common welding units are expressible directly: `kJ/mm`, `J/mm`, `mm/s`,
 `m/min`, `L/min` (shielding gas flow), `W/(m*K)` (conductivity),
@@ -90,18 +94,46 @@ Results keep a *display unit* chosen as follows:
    else the base form (`m^2`, `m/s`, `kg/m^3`).
 
 Note: J/m and N have the same dimension, so an energy per length printed
-without `.to()` shows as `N`. Use `.to(J/mm)` to choose the unit.
+without `.to()` shows as `N`. Use `.to(J/mm)` to choose the unit. A
+temperature difference without a unit of its own prints in `K`;
+`delta_degC` is shown only after `.to(delta_degC)`.
 
-## 5. Temperature *(open question)*
+## 5. Temperature
 
-Absolute (`K`) and affine (`degC`) temperatures behave differently:
-`20 degC + 10 degC` is ambiguous (point + point). Draft proposal:
+> **Implemented** (v0.2). Tests: `tests/language/conformance_temperature.mfl`,
+> `tests/language/errors/rt_affine.mfl`, `errors/compile_v02.mfl`.
 
-- `degC` literals create an **absolute** temperature stored in K
-  (`20 degC → 293.15 K`).
-- A separate unit `delta_degC` (= 1 K, no offset) is used for differences.
-- Subtracting two absolute temperatures yields a temperature difference.
-- Adding two absolute temperatures is a `DimensionError`-class warning.
+A temperature can mean two different things, and MFL keeps them apart:
+
+| Kind | Units | Meaning |
+|------|-------|---------|
+| **Absolute temperature** | `degC` | a point on the Celsius scale; stored with its offset: 20 degC = 293.15 K |
+| **Temperature difference** | `delta_degC`, `K` | an interval; 1 delta_degC = 1 K, no offset |
+
+Kelvin values have no offset, so `K` serves both as an absolute
+temperature and as a difference. A value in `degC` is *absolute*; its type
+is `Quantity[degC]` (see the language spec §4).
+
+| Operation | Result | Example |
+|-----------|--------|---------|
+| absolute − absolute | difference (printed in K) | `80 degC - 20 degC` → `60 K` |
+| absolute ± difference | absolute (keeps degC) | `20 degC + 5 K` → `25 degC`; `100 degC - 30 K` → `70 degC` |
+| difference + absolute | absolute | `5 K + 20 degC` → `25 degC` |
+| absolute + absolute | **error** | `cannot add two absolute temperatures (degC + degC)` |
+| difference − absolute | **error** | |
+| `*`, `/`, `^`, `%`, unary `-` on an absolute | **error** (`… convert it with .to(K) first`) | `20 degC * 2` |
+| comparison | absolute values compared in K | `27 degC > 300 K` → `true` |
+| `.to(K)` / `.value_in(K)` from degC | absolute conversion (adds 273.15) | `(20 degC).to(K)` → `293.15 K` |
+| `.to(degC)` from K | absolute conversion (subtracts 273.15) | `(273.15 K).to(degC)` → `0 degC` |
+| `.to(delta_degC)` from a difference | no offset | `(80 degC - 20 degC).to(delta_degC)` → `60 delta_degC` |
+
+`degC` cannot appear inside compound units (`degC/s` is an error: use `K/s`
+or `delta_degC/s`) and takes no prefix. Through the embedding API, inputs
+and outputs use K: an absolute temperature in degC cannot be passed in.
+
+Because 273.15 is not exact in binary, conversions with the offset are
+correctly rounded IEEE operations, not exact decimals:
+`(300 K).value_in(degC)` is `26.850000000000023`.
 
 ## 6. Precision
 
@@ -118,11 +150,12 @@ Measured (exact rational reference, 4000 random sums of up to five
 quantities in mixed units, converted to a random target): worst relative
 error 5.0e-16 (2.3 ulp).
 
-## 7. Planned tests (`tests/units/`)
+## 7. Tests
 
-- Each derived unit reduces to the expected base dimension.
-- Each prefix scales correctly.
-- `1 kJ/mm == 1000 J/mm`, `1 m/min == 16.666… mm/s`.
-- Adding incompatible dimensions raises `DimensionError` with the correct
-  message.
-- Heat input conformance test (`480 J/mm`).
+- Registry, prefixes, ambiguities, exact scales, dimension formatting:
+  `tests/unit/test_checker.c`.
+- Display rules and conversions: `tests/language/conformance_display.mfl`.
+- Temperatures (absolute and difference, tested separately):
+  `tests/language/conformance_temperature.mfl`.
+- Conversion accuracy against exact rational arithmetic (worst 2.3 ulp)
+  and the heat-input conformance test (`480 J/mm`).

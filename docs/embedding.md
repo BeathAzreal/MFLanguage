@@ -1,6 +1,6 @@
 # Embedding MFL in a host program
 
-> **Status:** implemented (v0.1 subset). Public header:
+> **Status:** implemented (v0.2; compatible with v0.1 hosts). Public header:
 > [`include/mfl/mfl.h`](../include/mfl/mfl.h). Complete example:
 > [`examples/embedding/heat_input_host.c`](../examples/embedding/heat_input_host.c).
 
@@ -64,6 +64,9 @@ models that run only once.
 | Errors | Every function returns an `MflStatus`. `mfl_error_message(S)` describes the last failure; program errors use one line each, `name:line:col: error: text`, the same format as the `mfl` command. Nothing calls `exit()` or `abort()`. |
 | Output | `print()` goes to `MflConfig.output(user, text, length)`; default: stdout. |
 | Memory | `MflConfig.memory_limit` caps each compilation stage and each run, in bytes (0 = no limit). Exceeding it returns `MFL_ERR_MEMORY` cleanly; this is tested for every limit from 1 to 5000 bytes. |
+| Run-time errors (v0.2) | A model can fail while running (array index out of range, a type or dimension only known at run time, call depth, instruction limit): `MFL_ERR_RUNTIME`, message `name:line:col: runtime error: text`. Output printed before the error has already reached the host. The previous results stay readable and the state stays usable: change the inputs and run again. |
+| Endless loops (v0.2) | `mfl_set_instruction_limit(S, n)` stops a run after `n` VM instructions with `MFL_ERR_RUNTIME` (0 = no limit, the default). Recommended for interactive hosts such as games. |
+| Temperatures | Inputs and outputs use K (an absolute temperature in degC cannot cross the API: `MFL_ERR_UNIT`). Inside a script, `(T_input).to(degC)` gives the Celsius value. |
 | Threads | No global state: different `MflState`s may be used from different threads at the same time. One state must not be used by two threads at once. A compiled script may be run on any state that provides its inputs. |
 | Locale | Numbers are read and printed with `.` whatever the host's locale (tested under pt_BR). |
 
@@ -81,6 +84,7 @@ models that run only once.
 | `MFL_ERR_INPUTS_CHANGED` | recompile the script |
 | `MFL_ERR_NOT_RUN` | nothing has run successfully yet |
 | `MFL_ERR_INTERNAL` | a bug in MFL; please report it |
+| `MFL_ERR_RUNTIME` | the program failed while running (v0.2; appended at the end of the enum, so existing values are unchanged) |
 
 ## 5. Example output
 
@@ -97,10 +101,10 @@ MIG/MAG, thick plate     28.0  280.0       4.0      6.272        1.568
 ## 6. Not available yet
 
 - A host-supplied allocator (only a memory limit for now).
-- Strings and booleans as inputs/outputs through the API (scripts can use
-  them internally).
-- Calling MFL functions from C, or C functions from MFL (functions arrive
-  in v0.2).
+- Strings, booleans and arrays as inputs/outputs through the API (scripts
+  can use them internally).
+- Calling MFL functions from C, or C functions from MFL (MFL functions
+  exist since v0.2, but only scripts can call them).
 - Reusing results between runs other than through inputs.
 - WebAssembly build (planned; the core already avoids threads, files and
   platform-specific code in the interpreter).

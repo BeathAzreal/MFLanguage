@@ -10,11 +10,13 @@ that students, researchers and engineers can write mathematical models, test
 hypotheses and run reproducible simulations — for undergraduate research
 (IC), final-year projects (TCC), graduate work and industrial applications.
 
-> ⚠️ **Early stage (pre-alpha).** The v0.1 core runs a small subset of the
-> language: `let`/`var`, arithmetic with physical units, static dimensional
-> analysis, unit conversion and `print`, and can be embedded in C/C++
-> programs. Functions, control flow, arrays and the scientific modules are
-> **planned, not implemented**. See [Current status](#current-status).
+> ⚠️ **Early stage (pre-alpha, v0.2).** The interpreter runs functions,
+> control flow, arrays and gradually typed code with physical units,
+> dimensional analysis (before running where possible, while running
+> otherwise), absolute temperatures and unit conversion, and can be
+> embedded in C/C++ programs. The scientific modules (numerical solvers,
+> welding models) are **planned, not implemented**. See
+> [Current status](#current-status).
 
 ---
 
@@ -37,8 +39,37 @@ let energy = efficiency * voltage * current / speed
 print(energy.to(J/mm))   # expected: 480 J/mm
 ```
 
-*This is the first conformance test of the language. With the v0.1 core it
-runs and prints `480 J/mm` (`./build/mfl examples/welding/heat_input.mfl`).*
+*This is the first conformance test of the language. It runs and prints
+`480 J/mm` (`./build/mfl examples/welding/heat_input.mfl`).*
+
+With v0.2 the same physics becomes a reusable, checked function:
+
+```mfl
+fn heat_input(voltage: Quantity[V], current: Quantity[A], speed: Quantity[mm/s],
+              efficiency: Number) -> Quantity[J/mm] {
+    return efficiency * voltage * current / speed
+}
+
+for v in [5 mm/s, 0.005 m/s, 10 mm/s, 0 mm/s] {
+    if v == 0 m/s {
+        print("v =", v, "-> arc not moving: heat input not defined, skipped")
+    } else {
+        print("v =", v, "->", heat_input(20 V, 150 A, v, 0.8).to(J/mm))
+    }
+}
+```
+
+```
+v = 5 mm/s -> 480 J/mm
+v = 0.005 m/s -> 480 J/mm
+v = 10 mm/s -> 240 J/mm
+v = 0 mm/s -> arc not moving: heat input not defined, skipped
+```
+
+Passing a power where the speed is expected is rejected before running:
+`argument 3 of 'heat_input' ('speed') must be Quantity[m/s] (declared as
+Quantity[mm/s]), found Quantity[kg*m^2/s^3]`. Full example:
+[`examples/welding/heat_input_v02.mfl`](examples/welding/heat_input_v02.mfl).
 
 ## Scientific goals
 
@@ -58,15 +89,19 @@ runs and prints `480 J/mm` (`./build/mfl examples/welding/heat_input.mfl`).*
 
 | Feature | Status |
 |---------|--------|
-| Lexer | **Implemented** (v0.1) — `mfl --tokens` |
-| Parser and AST | **Implemented** (v0.1 subset) — `mfl --ast` |
-| Bytecode compiler | **Implemented** (v0.1) — `mfl --bytecode` |
-| Custom stack-based virtual machine | **Implemented** (v0.1) — `mfl file.mfl` |
-| `double` precision as the default numeric type | Planned (v0.1) |
-| Physical units and dimensional analysis (SI base + derived) | **Implemented** (v0.1): checked before running (`mfl --types`), exact unit conversion when running |
-| Gradual typing (dynamic by default, optional annotations) | Planned (v0.2+) |
+| Lexer | **Implemented** — `mfl --tokens` |
+| Parser and AST | **Implemented** — `mfl --ast` |
+| Bytecode compiler | **Implemented** — `mfl --bytecode` |
+| Custom stack-based virtual machine | **Implemented** — `mfl file.mfl` |
+| `double` precision as the default numeric type | **Implemented** (IEEE 754 binary64, locale-independent I/O) |
+| Physical units and dimensional analysis (SI base + derived) | **Implemented**: checked before running where types are known (`mfl --types`), while running otherwise; exact unit conversion |
+| Absolute temperatures (`degC`) vs. differences (`K`, `delta_degC`) | **Implemented** (v0.2) |
+| Functions, `if`/`else`, `while`, `for`, blocks and scopes | **Implemented** (v0.2) |
+| Arrays (homogeneous, quantities in any unit of one dimension) | **Implemented** (v0.2) |
+| Gradual typing (optional annotations, run-time checks for the rest) | **Implemented** (v0.2) |
+| Error messages with `file:line:col`, at compile time and run time | **Implemented** |
 | Scientific modules (`math`, `units`, `numerical`, `welding`) independent of the core | Planned |
-| Embeddable C API for programs and games | **Implemented** (v0.1 subset) — [`docs/embedding.md`](docs/embedding.md) |
+| Embeddable C API for programs and games | **Implemented** — [`docs/embedding.md`](docs/embedding.md) |
 | WebAssembly target | Future |
 | Bindings to C/C++/Fortran scientific libraries | Future |
 
@@ -135,7 +170,7 @@ MFLanguage/
 ├── research/            Research log for IC/TCC (Portuguese): diary, ADRs, AI-use statement, references
 ├── src/
 │   ├── lexer/           Tokenizer (implemented)
-│   ├── parser/          Parser + AST (implemented, v0.1 subset)
+│   ├── parser/          Parser + AST (implemented)
 │   ├── compiler/        Semantic checker, bytecode compiler (implemented)
 │   ├── vm/              Bytecode virtual machine (implemented)
 │   ├── api/             Public embedding API implementation
@@ -169,20 +204,21 @@ Run a program:
 ```bash
 ./build/mfl examples/welding/heat_input.mfl       # prints: 480 J/mm
 ./build/mfl examples/thermal/steel_properties.mfl
+./build/mfl examples/welding/heat_input_v02.mfl   # v0.2 demonstration
 ```
 
 Inspect the stages: `--tokens` (lexer), `--ast` (parser), `--types`
-(inferred dimensions), `--bytecode` (compiled code). The v0.1 subset
-covers `let`, `var`, assignment, arithmetic with physical units, unit
-conversion and `print`; functions and control flow come in v0.2.
+(inferred types and dimensions, functions included), `--bytecode`
+(compiled code). The language is described in
+[`docs/language-spec.md`](docs/language-spec.md).
 
 ## Roadmap
 
 | Version | Scope |
 |---------|-------|
-| **v0.0.x** (current) | Repository, documentation, build system, CI |
-| **v0.1 — core** | Lexer, parser, AST, bytecode compiler, VM; numbers, strings, `let`, arithmetic, `print`; SI units with dimension checking and `.to()`; heat-input conformance test passing |
-| **v0.2** | Functions, control flow, arrays/vectors, gradual type annotations, full unit system, error messages with source locations |
+| **v0.0.x** ✅ | Repository, documentation, build system, CI |
+| **v0.1 — core** ✅ | Lexer, parser, AST, bytecode compiler, VM; numbers, strings, `let`, arithmetic, `print`; SI units with dimension checking and `.to()`; heat-input conformance test passing; C embedding API |
+| **v0.2** ✅ (this release) | Functions, control flow, arrays, gradual type annotations, absolute temperatures, error messages with source locations at compile and run time |
 | **v0.3** | `numerical` module: ODE integrators, 1D finite-difference heat solver, verification suite |
 | **v0.4** | C embedding API stabilised; experiment records (parameters, units, method, results) |
 | **v0.5** | 2D/3D moving heat sources, Goldak model, experimental comparison |
@@ -194,8 +230,8 @@ Contributions are welcome — especially from students and researchers in
 materials, welding, manufacturing and numerical methods.
 
 1. Open an issue describing the bug, proposal or scientific use case.
-2. Fork the repository and branch from `dev/mfl-core-v0.1` (core work) or
-   `main` (docs).
+2. Fork the repository and branch from the current development branch
+   (`dev/mfl-core-v0.1` at the time of v0.2) or `main` (docs).
 3. Keep the core in portable C11 with no external dependencies.
 4. Add tests: every language feature needs a conformance test
    (`tests/language/*.mfl` + `*.expected`); every numerical method needs a
@@ -206,18 +242,16 @@ materials, welding, manufacturing and numerical methods.
 
 ## Current status
 
-- ✅ Repository structure and design documents
-- ✅ CMake build (C11) and CI workflow (Linux/macOS/Windows)
-- ✅ `mfl` CLI (`--version`, `--help`, `--tokens`, `--ast`, `--types`; `mfl file.mfl` runs all checks)
-- ✅ Lexer with unit tests and token-stream golden tests
-- ✅ Parser + AST for the v0.1 subset (`let`, `var`, assignment, expressions, quantity literals), with error recovery
-- ✅ Semantic checker: names, unit registry, static dimensional analysis (`mfl --types`)
-- ✅ Bytecode compiler and VM: programs run; conformance test `480 J/mm` passes
-- ✅ C embedding API (`include/mfl/mfl.h`, `docs/embedding.md`), usable from C and C++
-- ⏳ Functions, control flow, arrays (v0.2); numerical module
-- ⏳ Units and dimensional analysis — **design only**
-- ⏳ Numerical and welding modules — **design only**
-- ✅ The example programs in `examples/` run (v0.1 subset)
+- ✅ Repository structure, design documents, CMake build (C11), CI on Linux (GCC, Clang), macOS (Clang) and Windows (MSVC)
+- ✅ `mfl` CLI: run a program, or inspect `--tokens`, `--ast`, `--types`, `--bytecode`
+- ✅ Lexer, parser and AST with error recovery
+- ✅ Semantic checker: names and scopes, unit registry, static dimensional analysis, gradual typing
+- ✅ Bytecode compiler and VM: functions (recursion, functions as values), `if`/`while`/`for`, arrays, run-time checks with positions, call depth limit
+- ✅ Units: SI base and derived, prefixes, min/h/L/bar/percent, absolute temperatures in degC, exact conversions
+- ✅ C embedding API (`include/mfl/mfl.h`, `docs/embedding.md`), usable from C and C++, with run-time errors and an instruction limit
+- ✅ Conformance tests: `480 J/mm` (v0.1) and the v0.2 acceptance demonstration
+- ⏳ `break`/`continue`, closures, modules (`import`), a garbage collector for arrays
+- ⏳ Numerical module (1D heat conduction solver: next milestone) and welding models — **design only**
 
 ## License
 
