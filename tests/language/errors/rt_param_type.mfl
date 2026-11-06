@@ -1,0 +1,4 @@
+fn area(side: Quantity[m]) -> Quantity[m^2] { return side * side }
+fn forward(v) { return area(v) }
+print(forward(2 m))
+print(forward(2 s))
