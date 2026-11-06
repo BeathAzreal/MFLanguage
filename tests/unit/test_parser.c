@@ -191,6 +191,11 @@ static void test_quantities(void)
     /* The unit ends where '*' or '/' is not followed by a unit. */
     EXPECT_EXPR("5 mm * 2", "(* (quantity 5 mm) 2)");
     EXPECT_EXPR("5 mm / 2 + 1 m", "(+ (/ (quantity 5 mm) 2) (quantity 1 m))");
+    /* '(' after '/' continues the unit only if a name (or '(') follows it. */
+    EXPECT_EXPR("5 m / (2 s)", "(/ (quantity 5 m) (quantity 2 s))");
+    EXPECT_EXPR("5 m * (2 + 3)", "(* (quantity 5 m) (+ 2 3))");
+    EXPECT_EXPR("1 W/((m*K))", "(quantity 1 (/ W (* m K)))");
+    EXPECT_EXPR("1 J/(kg*K) * (2 K)", "(* (quantity 1 (/ J (* kg K))) (quantity 2 K))");
     /* Per the spec, '/' followed by a name binds to the unit... */
     EXPECT_EXPR("5 mm / t", "(quantity 5 (/ mm t))");
     /* ...so dividing a quantity by a variable needs parentheses. */

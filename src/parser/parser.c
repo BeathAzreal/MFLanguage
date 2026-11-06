@@ -41,10 +41,15 @@ static void advance(Parser *p)
     p->cur = mfl_lexer_next(&p->lx);
 }
 
-static MflTokenKind peek_next_kind(const Parser *p)
+/* Kind of the token n positions after the current one (n >= 1). */
+static MflTokenKind peek_kind(const Parser *p, int n)
 {
     MflLexer copy = p->lx; /* the lexer is a plain value: cheap lookahead */
-    return mfl_lexer_next(&copy).kind;
+    MflTokenKind k = p->cur.kind;
+    while (n-- > 0) {
+        k = mfl_lexer_next(&copy).kind;
+    }
+    return k;
 }
 
 static int check(const Parser *p, MflTokenKind k) { return p->cur.kind == k; }
@@ -315,9 +320,15 @@ static MflExpr *parse_unit(Parser *p)
 {
     MflExpr *left = parse_unit_term(p);
     while ((check(p, MFL_TOK_STAR) || check(p, MFL_TOK_SLASH)) && !p->panic) {
-        MflTokenKind after = peek_next_kind(p);
+        MflTokenKind after = peek_kind(p, 1);
         MflToken op;
-        if (after != MFL_TOK_IDENT && after != MFL_TOK_LPAREN) {
+        if (after == MFL_TOK_LPAREN) {
+            /* `W/(m*K)` continues the unit; `m / (2 s)` does not. */
+            MflTokenKind inner = peek_kind(p, 2);
+            if (inner != MFL_TOK_IDENT && inner != MFL_TOK_LPAREN) {
+                break;
+            }
+        } else if (after != MFL_TOK_IDENT) {
             break; /* `5 mm * 2`: the operator belongs to the expression */
         }
         op = p->cur;
