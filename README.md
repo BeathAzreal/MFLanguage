@@ -120,6 +120,7 @@ See [`docs/validation-plan.md`](docs/validation-plan.md).
 MFLanguage/
 ├── .github/workflows/   CI (build + smoke tests)
 ├── docs/                Language spec, architecture, units, numerics, validation
+├── research/            Research log for IC/TCC (Portuguese): diary, ADRs, AI-use statement, references
 ├── src/
 │   ├── lexer/           Tokenizer (planned)
 │   ├── parser/          Parser + AST (planned)
