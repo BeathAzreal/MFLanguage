@@ -1,10 +1,12 @@
 /*
  * main.c - `mfl` command-line driver.
  *
- * Lexer and parser exist so far. `mfl --tokens file.mfl` prints the token
- * stream, `mfl --ast file.mfl` the syntax tree. Running a script checks
- * its syntax, then exits with status 2 because the compiler and VM are
- * not implemented yet.
+ * Lexer, parser and semantic checker exist so far:
+ *   mfl --tokens file.mfl   token stream
+ *   mfl --ast file.mfl      syntax tree (syntax only)
+ *   mfl --types file.mfl    inferred type of every declared name
+ *   mfl file.mfl            full check (syntax, names, units, dimensions),
+ *                           then exit 2: compiler and VM not implemented.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -12,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "compiler/checker.h"
 #include "lexer/lexer.h"
 #include "mfl/mfl.h"
 #include "parser/parser.h"
@@ -22,9 +25,10 @@ static void usage(FILE *out)
             "usage: mfl --version | --help\n"
             "       mfl --tokens <file.mfl>   print the token stream\n"
             "       mfl --ast <file.mfl>      print the syntax tree\n"
-            "       mfl <file.mfl>            check syntax; execution not implemented yet\n"
+            "       mfl --types <file.mfl>    check the program and print inferred types\n"
+            "       mfl <file.mfl>            check the program; execution not implemented yet\n"
             "\n"
-            "MFL %s - pre-alpha. Lexer and parser are implemented.\n",
+            "MFL %s - pre-alpha. Lexer, parser and checker are implemented.\n",
             mfl_version());
 }
 
@@ -125,13 +129,21 @@ static void write_stdout(void *ctx, const char *data, size_t length)
     fwrite(data, 1, length, stdout);
 }
 
-/* Parses a file, prints diagnostics to stderr as "file:line:col: error: msg".
- * Returns 0 on success, 1 on syntax errors or I/O failure. If print_ast is
- * set, prints the tree to stdout when there are no errors. */
-static int parse_file(const char *path, int print_ast)
+enum { MODE_CHECK, MODE_AST, MODE_TYPES };
+
+static void print_diagnostics(const char *path, const MflDiagnostic *d)
+{
+    for (; d != NULL; d = d->next) {
+        fprintf(stderr, "%s:%d:%d: error: %s\n", path, d->line, d->column, d->message);
+    }
+}
+
+/* Parses (and, except for MODE_AST, checks) a file. Diagnostics go to
+ * stderr as "file:line:col: error: msg". Returns 0 on success, 1 on
+ * errors or I/O failure. */
+static int process_file(const char *path, int mode)
 {
     MflParseResult res;
-    const MflDiagnostic *d;
     size_t len = 0;
     char *src = read_file(path, &len);
     int ok;
@@ -141,14 +153,24 @@ static int parse_file(const char *path, int print_ast)
         return 1;
     }
     ok = mfl_parse(src, len, 0, &res);
-    for (d = res.diagnostics; d != NULL; d = d->next) {
-        fprintf(stderr, "%s:%d:%d: error: %s\n", path, d->line, d->column, d->message);
-    }
+    print_diagnostics(path, res.diagnostics);
     if (res.out_of_memory) {
         fprintf(stderr, "mfl: out of memory while parsing '%s'\n", path);
     }
-    if (ok && print_ast) {
+    if (ok && mode == MODE_AST) {
         mfl_ast_print_program(&res.program, write_stdout, NULL);
+    }
+    if (ok && mode != MODE_AST) {
+        MflCheckResult chk;
+        ok = mfl_check(&res.program, 0, &chk);
+        print_diagnostics(path, chk.diagnostics);
+        if (chk.out_of_memory) {
+            fprintf(stderr, "mfl: out of memory while checking '%s'\n", path);
+        }
+        if (ok && mode == MODE_TYPES) {
+            mfl_check_print_symbols(&chk, write_stdout, NULL);
+        }
+        mfl_check_free(&chk);
     }
     mfl_parse_free(&res);
     free(src);
@@ -191,17 +213,24 @@ int main(int argc, char **argv)
             usage(stderr);
             return 1;
         }
-        return parse_file(argv[2], 1);
+        return process_file(argv[2], MODE_AST);
+    }
+    if (strcmp(argv[1], "--types") == 0) {
+        if (argc != 3) {
+            usage(stderr);
+            return 1;
+        }
+        return process_file(argv[2], MODE_TYPES);
     }
     if (argv[1][0] == '-') {
         fprintf(stderr, "mfl: unknown option '%s'\n", argv[1]);
         usage(stderr);
         return 1;
     }
-    if (parse_file(argv[1], 0) != 0) {
+    if (process_file(argv[1], MODE_CHECK) != 0) {
         return 1;
     }
-    fprintf(stderr, "mfl: '%s': syntax OK, but execution is not implemented yet (v%s).\n",
+    fprintf(stderr, "mfl: '%s': checks passed, but execution is not implemented yet (v%s).\n",
             argv[1], mfl_version());
     return 2;
 }

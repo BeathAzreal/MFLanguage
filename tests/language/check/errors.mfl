@@ -1,0 +1,35 @@
+# Semantic errors: each line below has at most one mistake (or none).
+let U = 20 V
+let I = 150 A
+let bad = U + I
+let t = 2 s
+let d = 5 mm / t
+let e = (5 mm) / t
+print(e.to(J/mm))
+print(y)
+let U = 1
+U = 2
+var T = 300 K
+T = 5 s
+T = T + 1 K
+let p = print
+let print = 3
+let ok = U > I
+let b = not 1
+let s = "a" + 1
+let w = (5 m) ^ x
+let z = (2 m) ^ 0.5
+let q = 2 ^ (1 m)
+let r = 25 degC
+let k = 45 W/(m*K)
+let alpha = k / (7850 kg/m^3 * 460 J/(kg*K))
+print(alpha.to(mm^2/s), alpha.value_in(m^2/s), alpha.to)
+f(1)
+U(2)
+let v = U[1]
+let m = 1 kohm + 2 Mohm
+let flow = 15 L/min
+let x2 = k.foo
+let pa = 1 bar == 1e5 Pa
+let n = 1 == "a"
+let nn = nil == 1

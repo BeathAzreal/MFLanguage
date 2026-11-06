@@ -26,6 +26,8 @@ add_library(mfl_core
     src/parser/ast.c
     src/parser/parser.c
     src/runtime/arena.c
+    src/runtime/units.c
+    src/compiler/checker.c
 )
 # include/ holds the public C API; src/ holds internal headers
 # (e.g. lexer/lexer.h) used by the core, the CLI and the unit tests.
@@ -102,6 +104,13 @@ if(MFL_BUILD_TESTS)
     mfl_set_warnings(test_parser)
     add_test(NAME parser_unit COMMAND test_parser)
 
+    # Units and semantic checker unit tests.
+    add_executable(test_checker tests/unit/test_checker.c)
+    target_link_libraries(test_checker PRIVATE mfl_core)
+    target_include_directories(test_checker PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    mfl_set_warnings(test_checker)
+    add_test(NAME checker_unit COMMAND test_checker)
+
     # Token-stream golden tests: `mfl --tokens <name>.mfl` must print
     # exactly tests/language/tokens/<name>.tokens.
     function(mfl_add_token_test name source expected_exit)
@@ -135,4 +144,21 @@ if(MFL_BUILD_TESTS)
     mfl_add_ast_test(heat_input examples/welding/heat_input.mfl 0)
     mfl_add_ast_test(expressions tests/language/ast/expressions.mfl 0)
     mfl_add_ast_test(errors tests/language/ast/errors.mfl 1)
+
+    # Semantic-check golden tests: `mfl --types <file>`; stdout must equal
+    # <name>.types (inferred types) and stderr <name>.stderr.
+    function(mfl_add_check_test name source expected_exit)
+        add_test(NAME checker_types_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DPROGRAM=$<TARGET_FILE:mfl>
+                "-DARGS=--types;${source}"
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/language/check/${name}.types
+                -DEXPECTED_STDERR=${PROJECT_SOURCE_DIR}/tests/language/check/${name}.stderr
+                -DEXPECTED_EXIT=${expected_exit}
+                -DWORKDIR=${PROJECT_SOURCE_DIR}
+                -P ${PROJECT_SOURCE_DIR}/tests/cmake/compare_output.cmake)
+    endfunction()
+    mfl_add_check_test(heat_input examples/welding/heat_input.mfl 0)
+    mfl_add_check_test(steel_properties examples/thermal/steel_properties.mfl 0)
+    mfl_add_check_test(errors tests/language/check/errors.mfl 1)
 endif()
