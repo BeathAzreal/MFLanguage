@@ -319,6 +319,69 @@ static MflExpr *parse_unit_term(Parser *p)
     return binary(p, &caret, atom, exponent);
 }
 
+/* Does the '(' that follows the current token start a unit group? Only if
+ * everything up to its matching ')' can be a unit expression: names, '*',
+ * '/', nested parentheses and integer exponents ('^' with an optional sign).
+ * So `W/(m*K)` continues the unit, while `(6 W/K) * (T - T_amb)` and
+ * `5 m / (2 s)` end it and the parentheses are an ordinary expression. */
+static int unit_group_follows(const Parser *p)
+{
+    MflLexer lx = p->lx; /* positioned after the current token */
+    MflToken t = mfl_lexer_next(&lx); /* the '(' */
+    int depth = 0;
+    int count = 0;
+    MflTokenKind prev = MFL_TOK_LPAREN;
+
+    if (t.kind != MFL_TOK_LPAREN) {
+        return 0;
+    }
+    depth = 1;
+    while (depth > 0 && count++ < 256) {
+        t = mfl_lexer_next(&lx);
+        switch (t.kind) {
+        case MFL_TOK_IDENT:
+            if (prev == MFL_TOK_IDENT || prev == MFL_TOK_RPAREN || prev == MFL_TOK_NUMBER) {
+                return 0; /* `(m s)`: two names in a row is not a unit */
+            }
+            break;
+        case MFL_TOK_LPAREN:
+            if (prev == MFL_TOK_IDENT || prev == MFL_TOK_RPAREN || prev == MFL_TOK_NUMBER) {
+                return 0;
+            }
+            depth++;
+            break;
+        case MFL_TOK_RPAREN:
+            if (prev != MFL_TOK_IDENT && prev != MFL_TOK_RPAREN && prev != MFL_TOK_NUMBER) {
+                return 0;
+            }
+            depth--;
+            break;
+        case MFL_TOK_STAR:
+        case MFL_TOK_SLASH:
+        case MFL_TOK_CARET:
+            if (prev != MFL_TOK_IDENT && prev != MFL_TOK_RPAREN && prev != MFL_TOK_NUMBER) {
+                return 0;
+            }
+            break;
+        case MFL_TOK_PLUS:
+        case MFL_TOK_MINUS:
+            if (prev != MFL_TOK_CARET) {
+                return 0; /* a sign only right after '^' */
+            }
+            break;
+        case MFL_TOK_NUMBER:
+            if (prev != MFL_TOK_CARET && prev != MFL_TOK_PLUS && prev != MFL_TOK_MINUS) {
+                return 0; /* a number only as an exponent */
+            }
+            break;
+        default:
+            return 0;
+        }
+        prev = t.kind;
+    }
+    return depth == 0;
+}
+
 static MflExpr *parse_unit(Parser *p)
 {
     MflExpr *left = parse_unit_term(p);
@@ -326,9 +389,7 @@ static MflExpr *parse_unit(Parser *p)
         MflTokenKind after = peek_kind(p, 1);
         MflToken op;
         if (after == MFL_TOK_LPAREN) {
-            /* `W/(m*K)` continues the unit; `m / (2 s)` does not. */
-            MflTokenKind inner = peek_kind(p, 2);
-            if (inner != MFL_TOK_IDENT && inner != MFL_TOK_LPAREN) {
+            if (!unit_group_follows(p)) {
                 break;
             }
         } else if (after != MFL_TOK_IDENT) {
@@ -880,6 +941,14 @@ static MflStmt *parse_fn(Parser *p, const MflToken *start)
     params = parse_params(p, &count);
     if (p->panic || !expect(p, MFL_TOK_RPAREN, "')' after the parameters")) {
         return NULL;
+    }
+    /* The return type may start the next line:
+     *     fn f(a: Quantity[m],
+     *          b: Quantity[s])
+     *         -> Quantity[m/s] { ... }
+     * ('->' cannot begin a statement, so this never changes a valid program.) */
+    if (check(p, MFL_TOK_NEWLINE) && peek_kind(p, 1) == MFL_TOK_ARROW) {
+        advance(p);
     }
     if (match(p, MFL_TOK_ARROW)) {
         ret = parse_type(p);

@@ -63,6 +63,18 @@ let r = a
 - b                       # two statements: `a`, then `-b`
 ```
 
+**Exception (v0.3): `->`.** The return type of a function may start the
+line after its parameter list (blank and comment lines may come between).
+`->` cannot begin a statement, so this never changes a valid program:
+
+```mfl
+fn heat_input(U: Quantity[V], I: Quantity[A],
+              v: Quantity[mm/s])
+    -> Quantity[J/mm] {
+    return 0.8 * U * I / v
+}
+```
+
 ## 3. Lexical elements
 
 | Token kind | Rule | Examples |
@@ -225,8 +237,9 @@ Binding rules (the parser applies them; `mfl --ast` shows the result):
 | Source | Tree | Why |
 |--------|------|-----|
 | `5 mm/s` | `(quantity 5 (/ mm s))` | `/` followed by a name continues the unit |
-| `45 W/(m*K)` | `(quantity 45 (/ W (* m K)))` | `(` + name after `/` or `*` opens a unit group |
-| `5 m / (2 s)` | `(/ (quantity 5 m) (quantity 2 s))` | `(` + number: ordinary division |
+| `45 W/(m*K)` | `(quantity 45 (/ W (* m K)))` | `(` after `/` or `*` opens a unit group when **everything up to its `)`** is a unit |
+| `5 m / (2 s)` | `(/ (quantity 5 m) (quantity 2 s))` | the group holds a number: ordinary division |
+| `6 W/K * (T - T_amb)` | `(* (quantity 6 (/ W K)) (- T T_amb))` | the group holds an operator that units do not use: the quantity ends (v0.3) |
 | `2 m^-2` | `(quantity 2 (^ m (- 2)))` | integer exponent, optional sign |
 | `5 mm * 2` | `(* (quantity 5 mm) 2)` | `*` followed by a number ends the unit |
 | `5 mm / t` | `(quantity 5 (/ mm t))` | **`t` is read as a unit**, not a variable |
@@ -234,8 +247,13 @@ Binding rules (the parser applies them; `mfl --ast` shows the result):
 | `5 mm.to(m)` | `(call (. (quantity 5 mm) to) m)` | `.` ends the unit |
 
 So, in a quantity literal, `/` and `*` bind to the unit: `5 mm/s` is five
-millimetres per second, not `5 mm` divided by a variable `s`. To divide or
-multiply a quantity by a variable, put the quantity in parentheses. Unit
+millimetres per second, not `5 mm` divided by a variable `s`. A
+parenthesised group after `/` or `*` belongs to the unit only if it
+contains nothing but unit names, `*`, `/`, nested parentheses and integer
+exponents; anything else (`+`, `-` between terms, numbers, calls, `.to`)
+ends the quantity, so `6 W/K * (T - T_amb)` multiplies as it reads. To
+divide or multiply a quantity by a single variable, put the quantity in
+parentheses: `(5 mm) / t`. Unit
 symbols live in their own namespace, so a variable named `s` does not
 shadow the second.
 

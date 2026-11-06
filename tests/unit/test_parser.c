@@ -243,9 +243,8 @@ static void test_errors(void)
     /* Unit errors. */
     EXPECT_DIAGS("let z = 5 m^x", "1:13: expected integer unit exponent, found 'x'\n");
     EXPECT_DIAGS("let z = 5 m^2.5", "1:13: expected integer unit exponent, found '2.5'\n");
-    EXPECT_DIAGS("let s = 5 mm/(x + 1)",
-                 "1:17: expected ')' in unit, found '+' (to divide or multiply a quantity by "
-                 "an expression, write e.g. (5 mm) / (...))\n");
+    /* `(m s)` is neither a unit group nor an expression. */
+    EXPECT_DIAGS("let s = 5 mm/(x y)", "1:17: expected ')' to close '(' at 1:14, found 'y'\n");
     /* Lexical errors are reported with the lexer's message. */
     EXPECT_DIAGS("let w = 5 @ 2", "1:11: unexpected character\n");
     EXPECT_DIAGS("let s = \"open", "1:9: unterminated string\n");
@@ -280,6 +279,37 @@ static void test_v02_syntax(void)
     EXPECT_AST("let m = [[1, 2], [3]]", "1:1 (let m (array (array 1 2) (array 3)))\n");
     EXPECT_AST("let b: Bool = true; let s: String = \"x\"",
                "1:1 (let b : Bool true)\n1:21 (let s : String \"x\")\n");
+}
+
+/* v0.3: a parenthesis after '*' or '/' opens a unit group only when its
+ * whole content is a unit; otherwise the quantity ends and the parentheses
+ * are an ordinary expression. */
+static void test_unit_groups(void)
+{
+    EXPECT_EXPR("6 W/K * (T - T_amb)", "(* (quantity 6 (/ W K)) (- T T_amb))");
+    EXPECT_EXPR("5 mm/(x + 1)", "(/ (quantity 5 mm) (+ x 1))");
+    EXPECT_EXPR("3 J/(kg*K) * (T - 20 K)", "(* (quantity 3 (/ J (* kg K))) (- T (quantity 20 K)))");
+    EXPECT_EXPR("2 m * (a.to(m))", "(* (quantity 2 m) (call (. a to) m))");
+    EXPECT_EXPR("5 m/(f(x))", "(/ (quantity 5 m) (call f x))");
+    /* unit groups are unchanged */
+    EXPECT_EXPR("45 W/(m*K)", "(quantity 45 (/ W (* m K)))");
+    EXPECT_EXPR("2 kg*m^2/(s^2*K)", "(quantity 2 (/ (* kg (^ m 2)) (* (^ s 2) K)))");
+    EXPECT_EXPR("5 m/(s^-1)", "(quantity 5 (/ m (^ s (- 1))))");
+    EXPECT_EXPR("1 W/((m*K))", "(quantity 1 (/ W (* m K)))");
+    EXPECT_EXPR("5 m / (2 s)", "(/ (quantity 5 m) (quantity 2 s))");
+    /* a single name in parentheses is still a unit (documented rule) */
+    EXPECT_EXPR("5 mm/(t)", "(quantity 5 (/ mm t))");
+}
+
+/* v0.3: the return type may start the line after the parameters. */
+static void test_arrow_on_next_line(void)
+{
+    EXPECT_AST("fn f(a: Quantity[m],\n     b: Quantity[s])\n    -> Quantity[m/s] {\n    return a / b\n}",
+               "1:1 (fn f (params (a : Quantity[m]) (b : Quantity[s])) -> Quantity[(/ m s)] "
+               "(block (return (/ a b))))\n");
+    EXPECT_AST("fn g()\n\n# comment\n-> Number { return 1 }", "1:1 (fn g (params) -> Number (block (return 1)))\n");
+    /* elsewhere '->' still cannot start a line */
+    EXPECT_DIAGS("let a = 1\n-> 2", "2:1: expected expression, found '->'\n");
 }
 
 static void test_imports(void)
@@ -534,6 +564,8 @@ int main(void)
     test_v02_syntax();
     test_v02_errors();
     test_imports();
+    test_unit_groups();
+    test_arrow_on_next_line();
     test_recovery();
     test_positions();
     test_limits();
