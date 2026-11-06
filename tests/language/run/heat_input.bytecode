@@ -1,0 +1,25 @@
+; globals 5, max stack 2, constants 4, units 6
+0000   10 CONST              0  20 V
+0003   10 SET_GLOBAL         0
+0006   11 CONST              1  150 A
+0009   11 SET_GLOBAL         1
+0012   12 CONST              2  5 mm/s
+0015   12 SET_GLOBAL         2
+0018   13 CONST              3  0.8
+0021   13 SET_GLOBAL         3
+0024   15 GET_GLOBAL         3
+0027   15 GET_GLOBAL         0
+0030   15 MUL
+0031   15 DEFAULT_UNIT       0  V (x1)
+0034   15 GET_GLOBAL         1
+0037   15 MUL
+0038   15 DEFAULT_UNIT       3  W (x1)
+0041   15 GET_GLOBAL         2
+0044   15 DIV
+0045   15 DEFAULT_UNIT       4  N (x1)
+0048   15 SET_GLOBAL         4
+0051   17 GET_GLOBAL         4
+0054   17 CONVERT            5  J/mm (x1000)
+0057   17 PRINT              1
+0060   17 POP
+0061    0 HALT

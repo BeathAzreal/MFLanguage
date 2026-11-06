@@ -65,7 +65,7 @@ struct MflExpr {
     int         column; /* (operator token for unary/binary) */
     MflExpr    *next;   /* next argument in a call's argument list */
     MflType     type;   /* set by the checker */
-    double      unit_scale; /* UNIT-typed roots: factor to coherent SI */
+    MflScale    unit_scale; /* UNIT-typed nodes: exact factor to coherent SI */
     union {
         MflText text;
         int     boolean;

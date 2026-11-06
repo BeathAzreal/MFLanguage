@@ -168,8 +168,8 @@ let k     = 45 W/(m*K)
 let rho   = 7850 kg/m^3
 ```
 
-> **Parsing implemented** (v0.1). Resolving unit names and checking
-> dimensions is done by a later stage (not implemented yet).
+> **Implemented** (v0.1): parsing, unit resolution and dimension checks
+> (§4.0), and exact conversion at run time (`docs/units.md` §6).
 
 Unit expression grammar:
 
@@ -274,20 +274,35 @@ fn area(r) { return pi * r^2 }
 
 ## 9. Built-ins (v0.1)
 
+> **Implemented** (compiler `src/compiler/compiler.c`, VM `src/vm/vm.c`).
+
 | Name | Description |
 |------|-------------|
-| `print(x, ...)` | Print values separated by spaces, followed by newline |
-| `.to(unit)` | Unit conversion (see §5.1) |
+| `print(x, ...)` | Print values separated by single spaces, then a newline; returns `nil` |
+| `.to(unit)` | Same quantity, expressed in `unit` (see §5.1) |
+| `.value_in(unit)` | Plain `Number`: the magnitude in `unit` |
 
-### 9.1 Output format of quantities
+### 9.1 Output format
 
-`print` writes the magnitude using the shortest representation that
-round-trips (`%.17g` trimmed; integers without decimal point), a single
-space, and the unit as written by the user:
+| Value | Printed as |
+|-------|-----------|
+| Number | shortest decimal that reads back to the same double: `480`, `0.8`, `0.30000000000000004`; exponent form outside 1e-4 ≤ \|x\| < 1e16: `1.5e-5`, `6.02e23`, `1e16`; `inf`, `-inf`, `nan` |
+| Quantity | number, one space, display unit (`docs/units.md` §4): `480 J/mm`, `45 W/(m*K)` |
+| Bool, Nil | `true`, `false`, `nil` |
+| String | its characters, escapes decoded |
 
-```
-480 J/mm
-```
+The decimal separator is always `.`, whatever the locale of the host
+program; reading literals is locale-independent too.
+
+### 9.2 Arithmetic semantics
+
+- All numbers are IEEE 754 binary64. Division by zero gives `inf`, `-inf`
+  or `nan`, as in C, Fortran or NumPy; v0.1 has **no run-time errors**,
+  because names, types and dimensions are checked before running.
+- `a % b` is the C `fmod`: the result has the sign of `a` (`-7 % 3` is `-1`).
+- `0.1 + 0.2 == 0.3` is `false`, as in any binary floating-point system.
+- `and`/`or` short-circuit: the right operand is not evaluated when the
+  left one decides the result.
 
 ## 10. Conformance example #1 — welding heat input
 

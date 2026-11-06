@@ -32,6 +32,28 @@ int    mfl_dim_pow(MflDim a, long n, MflDim *out);
  * "1/s", or "1" when dimensionless. Always NUL-terminates. */
 void mfl_dim_format(MflDim d, char *buf, size_t size);
 
+/* Exact factor from a unit to coherent SI: num / den * 10^exp10.
+ * num and den are integers held in doubles (exact up to 2^53); prefixes
+ * and decimal units only change exp10, so mm, kJ/mm, g/cm^3 are exact. */
+typedef struct {
+    double num;
+    double den;
+    int    exp10;
+} MflScale;
+
+MflScale mfl_scale_one(void);
+MflScale mfl_scale_mul(MflScale a, MflScale b);
+MflScale mfl_scale_div(MflScale a, MflScale b);
+MflScale mfl_scale_pow(MflScale a, long n);
+int      mfl_scale_equal(MflScale a, MflScale b);
+double   mfl_scale_to_double(MflScale s); /* approximate value */
+
+/* Converts a magnitude from unit scale `from` to unit scale `to`:
+ * mag * (from / to), with the decimal part applied as one exact power of
+ * ten, so pure prefix conversions (mm -> m, g/cm^3 -> kg/m^3) are
+ * correctly rounded. */
+double mfl_scale_convert(double mag, MflScale from, MflScale to);
+
 typedef enum {
     MFL_UNIT_OK,
     MFL_UNIT_UNKNOWN,
@@ -42,6 +64,12 @@ typedef enum {
  * An exact symbol always wins over a prefixed reading ("min" is minute,
  * "cd" is candela). On success sets *scale (factor to coherent SI) and
  * *dim. */
-MflUnitStatus mfl_unit_lookup(const char *name, size_t length, double *scale, MflDim *dim);
+MflUnitStatus mfl_unit_lookup(const char *name, size_t length, MflScale *scale, MflDim *dim);
+
+/* Name used to display a value of dimension d that has no unit of its
+ * own (units.md section 4): the coherent SI symbol when exactly one
+ * matches (e.g. "W", "V", "Pa"), otherwise the base-unit form
+ * ("kg*m/s^2" is N, so that one prints as "N"). */
+void mfl_dim_display_name(MflDim d, char *buf, size_t size);
 
 #endif /* MFL_UNITS_H */

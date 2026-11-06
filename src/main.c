@@ -1,12 +1,14 @@
 /*
  * main.c - `mfl` command-line driver.
  *
- * Lexer, parser and semantic checker exist so far:
- *   mfl --tokens file.mfl   token stream
- *   mfl --ast file.mfl      syntax tree (syntax only)
- *   mfl --types file.mfl    inferred type of every declared name
- *   mfl file.mfl            full check (syntax, names, units, dimensions),
- *                           then exit 2: compiler and VM not implemented.
+ *   mfl file.mfl              check, compile and run
+ *   mfl --tokens file.mfl     token stream
+ *   mfl --ast file.mfl        syntax tree (syntax only)
+ *   mfl --types file.mfl      inferred type of every declared name
+ *   mfl --bytecode file.mfl   compiled bytecode listing
+ *
+ * Exit status: 0 success, 1 errors in the program or bad usage,
+ * 3 internal failure (out of memory, invalid bytecode).
  *
  * SPDX-License-Identifier: MIT
  */
@@ -15,20 +17,23 @@
 #include <string.h>
 
 #include "compiler/checker.h"
+#include "compiler/compiler.h"
 #include "lexer/lexer.h"
 #include "mfl/mfl.h"
 #include "parser/parser.h"
+#include "vm/vm.h"
 
 static void usage(FILE *out)
 {
     fprintf(out,
-            "usage: mfl --version | --help\n"
-            "       mfl --tokens <file.mfl>   print the token stream\n"
-            "       mfl --ast <file.mfl>      print the syntax tree\n"
-            "       mfl --types <file.mfl>    check the program and print inferred types\n"
-            "       mfl <file.mfl>            check the program; execution not implemented yet\n"
+            "usage: mfl <file.mfl>              run a program\n"
+            "       mfl --tokens <file.mfl>     print the token stream\n"
+            "       mfl --ast <file.mfl>        print the syntax tree\n"
+            "       mfl --types <file.mfl>      check and print inferred types\n"
+            "       mfl --bytecode <file.mfl>   compile and print the bytecode\n"
+            "       mfl --version | --help\n"
             "\n"
-            "MFL %s - pre-alpha. Lexer, parser and checker are implemented.\n",
+            "MFL %s - pre-alpha (v0.1 subset: let, var, arithmetic with units, print).\n",
             mfl_version());
 }
 
@@ -129,7 +134,7 @@ static void write_stdout(void *ctx, const char *data, size_t length)
     fwrite(data, 1, length, stdout);
 }
 
-enum { MODE_CHECK, MODE_AST, MODE_TYPES };
+enum { MODE_RUN, MODE_AST, MODE_TYPES, MODE_BYTECODE };
 
 static void print_diagnostics(const char *path, const MflDiagnostic *d)
 {
@@ -138,15 +143,15 @@ static void print_diagnostics(const char *path, const MflDiagnostic *d)
     }
 }
 
-/* Parses (and, except for MODE_AST, checks) a file. Diagnostics go to
- * stderr as "file:line:col: error: msg". Returns 0 on success, 1 on
- * errors or I/O failure. */
+/* Runs the pipeline up to the stage the mode needs. Diagnostics go to
+ * stderr as "file:line:col: error: msg". Returns the exit status. */
 static int process_file(const char *path, int mode)
 {
     MflParseResult res;
     size_t len = 0;
     char *src = read_file(path, &len);
     int ok;
+    int status = 0;
 
     if (src == NULL) {
         fprintf(stderr, "mfl: cannot read '%s'\n", path);
@@ -170,10 +175,37 @@ static int process_file(const char *path, int mode)
         if (ok && mode == MODE_TYPES) {
             mfl_check_print_symbols(&chk, write_stdout, NULL);
         }
+        if (ok && (mode == MODE_RUN || mode == MODE_BYTECODE)) {
+            MflCompileResult comp;
+            ok = mfl_compile(&res.program, &chk, 0, &comp);
+            print_diagnostics(path, comp.diagnostics);
+            if (comp.out_of_memory) {
+                fprintf(stderr, "mfl: out of memory while compiling '%s'\n", path);
+                status = 3;
+            }
+            if (ok && mode == MODE_BYTECODE) {
+                mfl_chunk_disassemble(&comp.chunk, write_stdout, NULL);
+            }
+            if (ok && mode == MODE_RUN) {
+                MflVmStatus vs = mfl_vm_run(&comp.chunk, write_stdout, NULL, 0);
+                fflush(stdout);
+                if (vs != MFL_VM_OK) {
+                    fprintf(stderr, "mfl: %s while running '%s'\n",
+                            vs == MFL_VM_OUT_OF_MEMORY ? "out of memory" : "invalid bytecode",
+                            path);
+                    ok = 0;
+                    status = 3;
+                }
+            }
+            mfl_compile_free(&comp);
+        }
         mfl_check_free(&chk);
     }
     mfl_parse_free(&res);
     free(src);
+    if (status != 0) {
+        return status;
+    }
     return ok ? 0 : 1;
 }
 
@@ -215,22 +247,21 @@ int main(int argc, char **argv)
         }
         return process_file(argv[2], MODE_AST);
     }
-    if (strcmp(argv[1], "--types") == 0) {
+    if (strcmp(argv[1], "--types") == 0 || strcmp(argv[1], "--bytecode") == 0) {
         if (argc != 3) {
             usage(stderr);
             return 1;
         }
-        return process_file(argv[2], MODE_TYPES);
+        return process_file(argv[2], argv[1][2] == 't' ? MODE_TYPES : MODE_BYTECODE);
     }
     if (argv[1][0] == '-') {
         fprintf(stderr, "mfl: unknown option '%s'\n", argv[1]);
         usage(stderr);
         return 1;
     }
-    if (process_file(argv[1], MODE_CHECK) != 0) {
+    if (argc != 2) {
+        usage(stderr);
         return 1;
     }
-    fprintf(stderr, "mfl: '%s': checks passed, but execution is not implemented yet (v%s).\n",
-            argv[1], mfl_version());
-    return 2;
+    return process_file(argv[1], MODE_RUN);
 }

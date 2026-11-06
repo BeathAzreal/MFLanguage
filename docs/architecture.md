@@ -1,7 +1,8 @@
 # MFL Architecture — Draft 0
 
-> **Status:** planned architecture. Only the CLI stub (`src/main.c`) and
-> `mfl_version()` exist today.
+> **Status:** sections 2–4 and 9 are implemented for the v0.1 subset
+> (lexer, parser, checker, compiler, VM); sections 5–8 (modules, embedding
+> API, WebAssembly, library integration) are still plans.
 
 ## 1. Goals and constraints
 
@@ -38,34 +39,46 @@ and future tooling (formatter, LSP).
 
 ## 3. Value representation
 
+> **Implemented** (v0.1, `src/compiler/chunk.h`). This replaces the first
+> draft, which stored every quantity in SI with its dimension.
+
 ```c
-typedef enum { MFL_NIL, MFL_BOOL, MFL_NUMBER, MFL_QUANTITY, MFL_OBJ } MflValueType;
-
 typedef struct {
-    int8_t exp[7];          /* SI base exponents: m, kg, s, A, K, mol, cd */
-} MflDim;
+    MflValueKind kind;   /* NIL, BOOL, NUMBER, STRING */
+    int          unit;   /* NUMBER: index into the chunk's unit table, or none */
+    union { double number; int boolean; struct { const char *chars; size_t length; } string; } as;
+} MflValue;
 
-typedef struct {
-    double   value;         /* magnitude in coherent SI units */
-    MflDim   dim;
-    uint16_t display_unit;  /* index into the unit registry, for printing */
-} MflQuantity;
+typedef struct { double num, den; int exp10; } MflScale;  /* exact: num/den * 10^exp10 */
+typedef struct { const char *text; MflScale scale; } MflUnitEntry;
 ```
 
-- Quantities store the magnitude **in SI base units**; the display unit is
-  only for output. `5 mm/s` is stored as `0.005` with dim `L·T⁻¹`.
-- Dimension arithmetic is integer addition/subtraction of exponents — cheap
-  enough to do at run time on every operation.
+- A number stores its magnitude **in its display unit** (`5 mm/s` is `5`
+  with unit "mm/s"); arithmetic on different units converts both operands
+  to coherent SI first. Printing never re-converts, so literals print as
+  written.
+- **Dimensions are not stored at run time**: the checker has proven every
+  operation consistent (spec §4.0), so the VM does no dimension work.
 - *(open question)* rational exponents (e.g. `m^(1/2)`) — v0.1 uses integers.
 
 ## 4. Bytecode VM
 
-- Stack-based, 1-byte opcodes with inline operands.
-- Initial opcode set: `CONST, NIL, TRUE, FALSE, POP, GET_LOCAL, SET_LOCAL,
-  GET_GLOBAL, DEFINE_GLOBAL, SET_GLOBAL, ADD, SUB, MUL, DIV, POW, NEG, NOT,
-  EQ, LT, GT, JUMP, JUMP_IF_FALSE, LOOP, CALL, RETURN, CONVERT, PRINT`.
-- Quantity literals compile to a constant (already converted to SI).
-- `CONVERT` checks dimension equality and sets the display unit.
+> **Implemented** (v0.1, `src/compiler/`, `src/vm/`; listing with
+> `mfl --bytecode file.mfl`).
+
+- Stack-based, 1-byte opcodes, operands as 16-bit little-endian integers.
+- v0.1 opcodes: `CONST, NIL, TRUE, FALSE, POP, GET_GLOBAL, SET_GLOBAL, ADD,
+  SUB, MUL, DIV, MOD, POW, NEG, NOT, EQ, NE, LT, LE, GT, GE, JUMP_IF_FALSE,
+  JUMP_IF_TRUE, DEFAULT_UNIT, CONVERT, VALUE_IN, PRINT, HALT`. Locals,
+  loops and calls (`GET_LOCAL`, `JUMP`, `LOOP`, `CALL`, `RETURN`) come with
+  functions and control flow in v0.2.
+- Quantity literals compile to a constant holding the literal magnitude
+  and its unit. `DEFAULT_UNIT` gives an arithmetic result its coherent SI
+  display unit; `CONVERT`/`VALUE_IN` re-express a value in another unit.
+- The compiler computes the exact maximum stack depth; the VM allocates the
+  stack and globals once, validates every instruction, operand and stack
+  access, and reports `MFL_VM_INVALID_CODE` for damaged bytecode instead of
+  misbehaving. All output goes through a host-supplied write callback.
 - Memory: tracing mark-and-sweep GC for heap objects (strings, arrays,
   closures). Allocation goes through an allocator supplied by the host
   (`MflAllocFn`) so games can control memory.

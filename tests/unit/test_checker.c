@@ -46,9 +46,11 @@ static MflDim dim7(int m, int kg, int s, int A, int K, int mol, int cd)
 
 static void expect_unit(const char *name, double scale, MflDim dim, int line)
 {
-    double sc = 0.0;
+    MflScale exact = mfl_scale_one();
+    double sc;
     MflDim d = mfl_dim_none();
-    MflUnitStatus st = mfl_unit_lookup(name, strlen(name), &sc, &d);
+    MflUnitStatus st = mfl_unit_lookup(name, strlen(name), &exact, &d);
+    sc = mfl_scale_to_double(exact);
     g_checks++;
     if (st != MFL_UNIT_OK || !close_to(sc, scale) || !mfl_dim_equal(d, dim)) {
         char ds[96];
@@ -67,7 +69,7 @@ static void test_unit_registry(void)
     MflDim mass = dim7(0, 1, 0, 0, 0, 0, 0);
     MflDim time = dim7(0, 0, 1, 0, 0, 0, 0);
     MflDim pressure = dim7(-1, 1, -2, 0, 0, 0, 0);
-    double sc;
+    MflScale sc;
     MflDim d;
 
     /* Base units. */
@@ -468,10 +470,10 @@ static void test_unit_scales(void)
         q = pr.program.first->value;
         CHECK(q->kind == MFL_EXPR_QUANTITY);
         CHECK(q->as.quantity.unit->type.kind == MFL_TYPE_UNIT);
-        if (!close_to(q->as.quantity.unit->unit_scale, cases[i].scale)) {
+        if (!close_to(mfl_scale_to_double(q->as.quantity.unit->unit_scale), cases[i].scale)) {
             g_failures++;
             fprintf(stderr, "%s: scale %.17g, want %.17g\n", cases[i].src,
-                    q->as.quantity.unit->unit_scale, cases[i].scale);
+                    mfl_scale_to_double(q->as.quantity.unit->unit_scale), cases[i].scale);
         }
         g_checks++;
         mfl_check_free(&cr);
@@ -488,7 +490,8 @@ static void test_unit_scales(void)
         CHECK(mfl_check(&pr.program, 0, &cr));
         call = pr.program.first->next->value->as.call.args; /* e.to(J/mm) */
         CHECK(call->kind == MFL_EXPR_CALL);
-        CHECK(close_to(call->as.call.args->unit_scale, 1e3));
+        CHECK(close_to(mfl_scale_to_double(call->as.call.args->unit_scale), 1e3));
+        CHECK(call->as.call.args->unit_scale.exp10 == 3); /* exact: 10^3 */
         CHECK(call->type.kind == MFL_TYPE_NUMBER);
         mfl_check_free(&cr);
         mfl_parse_free(&pr);
