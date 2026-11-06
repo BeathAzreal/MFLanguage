@@ -99,7 +99,146 @@ void mfl_ast_print_expr(const MflExpr *e, MflWriteFn w, void *ctx)
         mfl_ast_print_expr(e->as.quantity.unit, w, ctx);
         put(w, ctx, ")");
         break;
+    case MFL_EXPR_ARRAY:
+        put(w, ctx, "(array");
+        for (arg = e->as.array.elems; arg != NULL; arg = arg->next) {
+            put(w, ctx, " ");
+            mfl_ast_print_expr(arg, w, ctx);
+        }
+        put(w, ctx, ")");
+        break;
     }
+}
+
+static void print_type_expr(const MflTypeExpr *t, MflWriteFn w, void *ctx)
+{
+    if (t == NULL) {
+        put(w, ctx, "<null>");
+        return;
+    }
+    switch (t->kind) {
+    case MFL_TE_NUMBER: put(w, ctx, "Number"); break;
+    case MFL_TE_BOOL: put(w, ctx, "Bool"); break;
+    case MFL_TE_STRING: put(w, ctx, "String"); break;
+    case MFL_TE_QUANTITY:
+        put(w, ctx, "Quantity[");
+        mfl_ast_print_expr(t->unit, w, ctx);
+        put(w, ctx, "]");
+        break;
+    case MFL_TE_ARRAY:
+        put(w, ctx, "Array[");
+        print_type_expr(t->elem, w, ctx);
+        put(w, ctx, "]");
+        break;
+    }
+}
+
+static void print_stmt(const MflStmt *s, MflWriteFn w, void *ctx);
+
+static void print_block(const MflStmt *first, MflWriteFn w, void *ctx)
+{
+    const MflStmt *s;
+    put(w, ctx, "(block");
+    for (s = first; s != NULL; s = s->next) {
+        put(w, ctx, " ");
+        print_stmt(s, w, ctx);
+    }
+    put(w, ctx, ")");
+}
+
+static void print_stmt(const MflStmt *s, MflWriteFn w, void *ctx)
+{
+    const MflParam *prm;
+    switch (s->kind) {
+    case MFL_STMT_LET:
+    case MFL_STMT_VAR:
+        put(w, ctx, s->kind == MFL_STMT_LET ? "(let " : "(var ");
+        put_text(w, ctx, s->name);
+        if (s->annotation != NULL) {
+            put(w, ctx, " : ");
+            print_type_expr(s->annotation, w, ctx);
+        }
+        put(w, ctx, " ");
+        mfl_ast_print_expr(s->value, w, ctx);
+        break;
+    case MFL_STMT_ASSIGN:
+        put(w, ctx, "(assign ");
+        mfl_ast_print_expr(s->target, w, ctx);
+        put(w, ctx, " ");
+        mfl_ast_print_expr(s->value, w, ctx);
+        break;
+    case MFL_STMT_EXPR:
+        put(w, ctx, "(expr ");
+        mfl_ast_print_expr(s->value, w, ctx);
+        break;
+    case MFL_STMT_FN:
+        put(w, ctx, "(fn ");
+        put_text(w, ctx, s->name);
+        put(w, ctx, " (params");
+        for (prm = s->params; prm != NULL; prm = prm->next) {
+            put(w, ctx, " ");
+            if (prm->type != NULL) {
+                put(w, ctx, "(");
+                put_text(w, ctx, prm->name);
+                put(w, ctx, " : ");
+                print_type_expr(prm->type, w, ctx);
+                put(w, ctx, ")");
+            } else {
+                put_text(w, ctx, prm->name);
+            }
+        }
+        put(w, ctx, ")");
+        if (s->ret_type != NULL) {
+            put(w, ctx, " -> ");
+            print_type_expr(s->ret_type, w, ctx);
+        }
+        put(w, ctx, " ");
+        print_block(s->body, w, ctx);
+        break;
+    case MFL_STMT_RETURN:
+        put(w, ctx, "(return");
+        if (s->value != NULL) {
+            put(w, ctx, " ");
+            mfl_ast_print_expr(s->value, w, ctx);
+        }
+        break;
+    case MFL_STMT_IF:
+        put(w, ctx, "(if ");
+        mfl_ast_print_expr(s->value, w, ctx);
+        put(w, ctx, " ");
+        print_block(s->body, w, ctx);
+        if (s->else_body != NULL) {
+            put(w, ctx, " ");
+            print_stmt(s->else_body, w, ctx);
+        }
+        break;
+    case MFL_STMT_WHILE:
+        put(w, ctx, "(while ");
+        mfl_ast_print_expr(s->value, w, ctx);
+        put(w, ctx, " ");
+        print_block(s->body, w, ctx);
+        break;
+    case MFL_STMT_FOR:
+        put(w, ctx, "(for ");
+        put_text(w, ctx, s->name);
+        put(w, ctx, " ");
+        if (s->range_end != NULL) {
+            put(w, ctx, "(range ");
+            mfl_ast_print_expr(s->value, w, ctx);
+            put(w, ctx, " ");
+            mfl_ast_print_expr(s->range_end, w, ctx);
+            put(w, ctx, ")");
+        } else {
+            mfl_ast_print_expr(s->value, w, ctx);
+        }
+        put(w, ctx, " ");
+        print_block(s->body, w, ctx);
+        break;
+    case MFL_STMT_BLOCK:
+        print_block(s->body, w, ctx);
+        return; /* print_block closes its own parenthesis */
+    }
+    put(w, ctx, ")");
 }
 
 void mfl_ast_print_program(const MflProgram *program, MflWriteFn w, void *ctx)
@@ -110,25 +249,7 @@ void mfl_ast_print_program(const MflProgram *program, MflWriteFn w, void *ctx)
     for (s = program->first; s != NULL; s = s->next) {
         snprintf(pos, sizeof pos, "%d:%d ", s->line, s->column);
         put(w, ctx, pos);
-        switch (s->kind) {
-        case MFL_STMT_LET:
-        case MFL_STMT_VAR:
-            put(w, ctx, s->kind == MFL_STMT_LET ? "(let " : "(var ");
-            put_text(w, ctx, s->name);
-            put(w, ctx, " ");
-            mfl_ast_print_expr(s->value, w, ctx);
-            break;
-        case MFL_STMT_ASSIGN:
-            put(w, ctx, "(assign ");
-            mfl_ast_print_expr(s->target, w, ctx);
-            put(w, ctx, " ");
-            mfl_ast_print_expr(s->value, w, ctx);
-            break;
-        case MFL_STMT_EXPR:
-            put(w, ctx, "(expr ");
-            mfl_ast_print_expr(s->value, w, ctx);
-            break;
-        }
-        put(w, ctx, ")\n");
+        print_stmt(s, w, ctx);
+        put(w, ctx, "\n");
     }
 }

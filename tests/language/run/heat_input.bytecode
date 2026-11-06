@@ -1,25 +1,23 @@
-; globals 5, max stack 2, constants 4, units 6
-0000   10 CONST              0  20 V
-0003   10 SET_GLOBAL         0
-0006   11 CONST              1  150 A
-0009   11 SET_GLOBAL         1
-0012   12 CONST              2  5 mm/s
-0015   12 SET_GLOBAL         2
-0018   13 CONST              3  0.8
-0021   13 SET_GLOBAL         3
-0024   15 GET_GLOBAL         3
-0027   15 GET_GLOBAL         0
-0030   15 MUL
-0031   15 DEFAULT_UNIT       0  V (x1)
-0034   15 GET_GLOBAL         1
-0037   15 MUL
-0038   15 DEFAULT_UNIT       3  W (x1)
-0041   15 GET_GLOBAL         2
-0044   15 DIV
-0045   15 DEFAULT_UNIT       4  N (x1)
-0048   15 SET_GLOBAL         4
-0051   17 GET_GLOBAL         4
-0054   17 CONVERT            5  J/mm (x1000)
-0057   17 PRINT              1
-0060   17 POP
-0061    0 HALT
+; globals 5, functions 0, constants 4, units 4, types 0
+; main: frame 0, max stack 3
+0000   10:15  CONST                 0  20 V
+0003   10:1   SET_GLOBAL            0  voltage
+0006   11:15  CONST                 1  150 A
+0009   11:1   SET_GLOBAL            1  current
+0012   12:13  CONST                 2  5 mm/s
+0015   12:1   SET_GLOBAL            2  speed
+0018   13:18  CONST                 3  0.8
+0021   13:1   SET_GLOBAL            3  efficiency
+0024   15:14  GET_GLOBAL            3  efficiency
+0027   15:27  GET_GLOBAL            0  voltage
+0030   15:25  MUL
+0031   15:37  GET_GLOBAL            1  current
+0034   15:35  MUL
+0035   15:47  GET_GLOBAL            2  speed
+0038   15:45  DIV
+0039   15:1   SET_GLOBAL            4  energy
+0042   17:7   GET_GLOBAL            4  energy
+0045   17:7   CONVERT               3  J/mm (x1000)
+0048   17:1   PRINT                 1
+0051   17:1   POP
+0052    0:0   HALT

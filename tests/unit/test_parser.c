@@ -235,8 +235,8 @@ static void test_errors(void)
     EXPECT_DIAGS("v[1", "1:4: expected ']' after index, found end of file\n");
     EXPECT_DIAGS("a.1", "1:3: expected property name after '.', found '1'\n");
     EXPECT_DIAGS("a b", "1:3: expected end of statement (newline or ';'), found 'b'\n");
-    EXPECT_DIAGS("1 = 2", "1:3: invalid assignment target (only a variable can be assigned)\n");
-    EXPECT_DIAGS("a.b = 2", "1:5: invalid assignment target (only a variable can be assigned)\n");
+    EXPECT_DIAGS("1 = 2", "1:3: invalid assignment target (only a variable or an array element can be assigned)\n");
+    EXPECT_DIAGS("a.b = 2", "1:5: invalid assignment target (only a variable or an array element can be assigned)\n");
     EXPECT_DIAGS("x = 1 = 2", "1:7: expected end of statement (newline or ';'), found '='\n");
     EXPECT_DIAGS("let u = )", "1:9: expected expression, found ')'\n");
     EXPECT_DIAGS("}", "1:1: expected expression, found '}'\n");
@@ -252,18 +252,62 @@ static void test_errors(void)
     EXPECT_DIAGS("let n = !x", "1:9: unexpected '!' (use 'not' for logical negation)\n");
 }
 
-static void test_unsupported(void)
+static void test_v02_syntax(void)
 {
-    EXPECT_DIAGS("if x > 1 {\n  print(x)\n}\nlet ok = 1\n",
-                 "1:1: 'if' is not supported yet (planned for v0.2)\n");
-    EXPECT_DIAGS("fn f(x) {\n  return {x}\n}\n",
-                 "1:1: 'fn' is not supported yet (planned for v0.2)\n");
-    EXPECT_DIAGS("while x { }; for i in 0..n { }",
-                 "1:1: 'while' is not supported yet (planned for v0.2)\n"
-                 "1:14: 'for' is not supported yet (planned for v0.2)\n");
-    EXPECT_DIAGS("import welding\nreturn 1",
-                 "1:1: 'import' is not supported yet (planned for v0.2)\n"
-                 "2:1: 'return' is not supported yet (planned for v0.2)\n");
+    /* Functions, with and without annotations. */
+    EXPECT_AST("fn f(a, b: Number) -> Quantity[J/mm] {\n  return a * b\n}\n",
+               "1:1 (fn f (params a (b : Number)) -> Quantity[(/ J mm)] (block (return (* a b))))\n");
+    EXPECT_AST("fn g() { return }\nfn h(x) { print(x) }",
+               "1:1 (fn g (params) (block (return)))\n2:1 (fn h (params x) (block (expr (call print x))))\n");
+    /* if / else if / else, also with else on the next line. */
+    EXPECT_AST("if a { b } else if c { d } else { e }",
+               "1:1 (if a (block (expr b)) (if c (block (expr d)) (block (expr e))))\n");
+    EXPECT_AST("if a {\n  b\n}\nelse {\n  c\n}\n", "1:1 (if a (block (expr b)) (block (expr c)))\n");
+    EXPECT_AST("if v == 0 m/s { x = 1 }",
+               "1:1 (if (== v (quantity 0 (/ m s))) (block (assign x 1)))\n");
+    /* while, for over a range and over an array, blocks. */
+    EXPECT_AST("while t < 10 s { t = t + dt }",
+               "1:1 (while (< t (quantity 10 s)) (block (assign t (+ t dt))))\n");
+    EXPECT_AST("for i in 0..n { print(i) }",
+               "1:1 (for i (range 0 n) (block (expr (call print i))))\n");
+    EXPECT_AST("for v in [5 mm/s, 0.005 m/s] { }",
+               "1:1 (for v (array (quantity 5 (/ mm s)) (quantity 0.005 (/ m s))) (block))\n");
+    EXPECT_AST("{ let a = 1; print(a) }", "1:1 (block (let a 1) (expr (call print a)))\n");
+    /* Arrays, element assignment, annotations. */
+    EXPECT_AST("let a: Array[Quantity[m/s]] = []\na[0] = 1 m/s\nvar n: Number = len(a)",
+               "1:1 (let a : Array[Quantity[(/ m s)]] (array))\n2:1 (assign (index a 0) (quantity 1 (/ m s)))\n"
+               "3:1 (var n : Number (call len a))\n");
+    EXPECT_AST("let m = [[1, 2], [3]]", "1:1 (let m (array (array 1 2) (array 3)))\n");
+    EXPECT_AST("let b: Bool = true; let s: String = \"x\"",
+               "1:1 (let b : Bool true)\n1:21 (let s : String \"x\")\n");
+}
+
+static void test_v02_errors(void)
+{
+    EXPECT_DIAGS("return 1", "1:1: 'return' outside a function\n");
+    EXPECT_DIAGS("if x { return 1 }", "1:8: 'return' outside a function\n");
+    EXPECT_DIAGS("fn f() { fn g() { } }",
+                 "1:10: functions can only be declared at the top level (no nested functions in v0.2)\n");
+    EXPECT_DIAGS("if x { fn g() { } }",
+                 "1:8: functions can only be declared at the top level (no nested functions in v0.2)\n");
+    EXPECT_DIAGS("else { }", "1:1: 'else' without a matching 'if'\n");
+    EXPECT_DIAGS("import welding", "1:1: 'import' is not supported yet (modules are planned after v0.2)\n");
+    EXPECT_DIAGS("if x print(1)", "1:6: expected '{' after the condition of 'if', found 'print'\n");
+    EXPECT_DIAGS("while x { a", "1:12: expected '}' to close the block opened at 1:9, found end of file\n");
+    EXPECT_DIAGS("for 1 in a { }", "1:5: expected loop variable name after 'for', found '1'\n");
+    EXPECT_DIAGS("for i a { }", "1:7: expected 'in' after the loop variable, found 'a'\n");
+    EXPECT_DIAGS("fn (x) { }", "1:4: expected function name after 'fn', found '('\n");
+    EXPECT_DIAGS("fn f(1) { }", "1:6: expected parameter name, found '1'\n");
+    EXPECT_DIAGS("let x: Foo = 1", "1:8: unknown type 'Foo' (expected Number, Quantity[unit], Bool, String or Array[type])\n");
+    EXPECT_DIAGS("let x: Quantity = 1", "1:17: expected '[' after Quantity (e.g. Quantity[m/s]), found '='\n");
+    EXPECT_DIAGS("let x: Quantity[3] = 1", "1:17: expected a unit inside Quantity[...], found '3'\n");
+    EXPECT_DIAGS("let a = [1, 2", "1:14: expected ']' to close the array, found end of file\n");
+    EXPECT_DIAGS("f() = 1", "1:5: invalid assignment target (only a variable or an array element can be assigned)\n");
+    /* Errors inside a block do not hide the rest of the block or the program. */
+    EXPECT_DIAGS("if x {\n  let = 1\n  print(\n}\nlet ok = 1\nlet = 2\n",
+                 "2:7: expected variable name after 'let', found '='\n"
+                 "4:1: expected expression, found '}'\n"
+                 "6:5: expected variable name after 'let', found '='\n");
 }
 
 static void test_recovery(void)
@@ -288,7 +332,7 @@ static void test_recovery(void)
     EXPECT_DIAGS("let y = (1 + 2\nlet z = 5 m^x\n1 = 2\n",
                  "1:15: expected ')' to close '(' at 1:9, found end of line\n"
                  "2:13: expected integer unit exponent, found 'x'\n"
-                 "3:3: invalid assignment target (only a variable can be assigned)\n");
+                 "3:3: invalid assignment target (only a variable or an array element can be assigned)\n");
 }
 
 static void test_positions(void)
@@ -472,7 +516,8 @@ int main(void)
     test_quantities();
     test_statements();
     test_errors();
-    test_unsupported();
+    test_v02_syntax();
+    test_v02_errors();
     test_recovery();
     test_positions();
     test_limits();

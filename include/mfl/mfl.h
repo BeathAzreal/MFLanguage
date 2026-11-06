@@ -21,9 +21,13 @@
  * every failure is a status code plus a message, strings are UTF-8,
  * print() output goes to a host callback.
  *
- * STATUS: pre-alpha (v0.1 subset). Inputs and outputs are numbers and
- * quantities. Not yet available: a host-supplied allocator (only a memory
- * limit), strings/booleans through the API, functions callable from C.
+ * STATUS: pre-alpha (v0.2). Inputs and outputs are numbers and quantities
+ * (scripts themselves may use functions, arrays, ...). Not yet available:
+ * a host-supplied allocator (only a memory limit), strings/booleans/arrays
+ * through the API, calling MFL functions from C.
+ *
+ * After any error (including MFL_ERR_RUNTIME) the state stays usable: the
+ * host may change inputs and run again.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -63,7 +67,11 @@ typedef enum {
     MFL_ERR_INPUTS_CHANGED, /* a script's inputs were removed or changed dimension
                                since it was compiled; compile it again            */
     MFL_ERR_NOT_RUN,        /* mfl_get_number() before any successful run         */
-    MFL_ERR_INTERNAL        /* should not happen; please report it                */
+    MFL_ERR_INTERNAL,       /* should not happen; please report it                */
+    MFL_ERR_RUNTIME         /* the program failed while running (v0.2): index out
+                               of range, a type or dimension only known at run
+                               time, call depth or instruction limit; the message
+                               is "name:line:col: runtime error: text"            */
 } MflStatus;
 
 /* Receives print() output. `text` is not NUL-terminated. */
@@ -107,6 +115,11 @@ MflStatus mfl_set_number(MflState *S, const char *name, double value, const char
 
 /* Removes all inputs. */
 void mfl_clear_inputs(MflState *S);
+
+/* Limits the number of VM instructions per run (0 = no limit, the
+ * default). A run that exceeds it fails with MFL_ERR_RUNTIME, so an
+ * endless loop in a model cannot freeze the host (v0.2). */
+void mfl_set_instruction_limit(MflState *S, unsigned long long max_instructions);
 
 /* Reads a variable (an input or a top-level 'let'/'var') as it was at the
  * end of the last successful run on S, expressed in `unit`. The unit must

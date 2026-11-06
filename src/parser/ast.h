@@ -33,10 +33,13 @@ typedef enum {
     MFL_EXPR_CALL,     /* as.call: callee(args...) */
     MFL_EXPR_MEMBER,   /* as.member: object.name */
     MFL_EXPR_INDEX,    /* as.index: object[index] */
-    MFL_EXPR_QUANTITY  /* as.quantity: number followed by a unit expression */
+    MFL_EXPR_QUANTITY, /* as.quantity: number followed by a unit expression */
+    MFL_EXPR_ARRAY     /* as.array: [e1, e2, ...] (v0.2) */
 } MflExprKind;
 
 typedef struct MflExpr MflExpr;
+typedef struct MflStmt MflStmt;
+typedef struct MflFnSig MflFnSig; /* defined in compiler/checker.h */
 
 typedef struct {
     const char *start;
@@ -51,21 +54,61 @@ typedef enum {
     MFL_TYPE_BOOL,
     MFL_TYPE_STRING,
     MFL_TYPE_NIL,
-    MFL_TYPE_UNIT           /* a unit expression (quantity literal unit, .to argument) */
+    MFL_TYPE_UNIT,          /* a unit expression (quantity literal unit, .to argument) */
+    MFL_TYPE_ANY,           /* not known before running: checked at run time (v0.2) */
+    MFL_TYPE_ARRAY,         /* elem: element type (v0.2) */
+    MFL_TYPE_FUNCTION       /* fn: signature (v0.2) */
 } MflTypeKind;
 
-typedef struct {
-    MflTypeKind kind;
-    MflDim      dim; /* for NUMBER and UNIT */
-} MflType;
+typedef struct MflType MflType;
+
+struct MflType {
+    MflTypeKind     kind;
+    MflDim          dim;    /* NUMBER and UNIT */
+    unsigned char   affine; /* NUMBER/UNIT: absolute temperature on an offset scale (degC) */
+    const MflType  *elem;   /* ARRAY */
+    const MflFnSig *fn;     /* FUNCTION */
+};
+
+/* Where a name refers to, decided by the checker. */
+typedef enum {
+    MFL_REF_NONE = 0,
+    MFL_REF_GLOBAL,   /* ref_index: global slot */
+    MFL_REF_LOCAL,    /* ref_index: slot in the current function frame */
+    MFL_REF_FUNCTION, /* ref_index: function number */
+    MFL_REF_BUILTIN   /* ref_index: MflBuiltin */
+} MflRefKind;
+
+typedef enum { MFL_BUILTIN_PRINT, MFL_BUILTIN_LEN, MFL_BUILTIN_PUSH } MflBuiltin;
+
+/* Type annotation as written (v0.2): Number, Bool, String, Quantity[u], Array[T]. */
+typedef enum {
+    MFL_TE_NUMBER,
+    MFL_TE_BOOL,
+    MFL_TE_STRING,
+    MFL_TE_QUANTITY,
+    MFL_TE_ARRAY
+} MflTypeExprKind;
+
+typedef struct MflTypeExpr MflTypeExpr;
+
+struct MflTypeExpr {
+    MflTypeExprKind kind;
+    int             line;
+    int             column;
+    MflExpr        *unit; /* QUANTITY */
+    MflTypeExpr    *elem; /* ARRAY */
+};
 
 struct MflExpr {
     MflExprKind kind;
     int         line;   /* position of the token that defines the node */
     int         column; /* (operator token for unary/binary) */
-    MflExpr    *next;   /* next argument in a call's argument list */
+    MflExpr    *next;   /* next argument / array element */
     MflType     type;   /* set by the checker */
     MflScale    unit_scale; /* UNIT-typed nodes: exact factor to coherent SI */
+    MflRefKind  ref_kind;   /* IDENT (and callee IDENT): set by the checker */
+    int         ref_index;
     union {
         MflText text;
         int     boolean;
@@ -95,31 +138,65 @@ struct MflExpr {
             MflExpr *value; /* MFL_EXPR_NUMBER */
             MflExpr *unit;
         } quantity;
+        struct {
+            MflExpr *elems; /* linked through ->next */
+            int      count;
+        } array;
     } as;
 };
 
 typedef enum {
-    MFL_STMT_LET,    /* let name = value     (immutable binding) */
-    MFL_STMT_VAR,    /* var name = value     (mutable binding)   */
-    MFL_STMT_ASSIGN, /* target = value       (target: IDENT)     */
-    MFL_STMT_EXPR    /* value                                    */
+    MFL_STMT_LET,    /* let name (: annotation)? = value                       */
+    MFL_STMT_VAR,    /* var name (: annotation)? = value                       */
+    MFL_STMT_ASSIGN, /* target = value         (target: IDENT or INDEX)        */
+    MFL_STMT_EXPR,   /* value                                                  */
+    MFL_STMT_FN,     /* fn name(params) (-> ret_type)? body          (v0.2)    */
+    MFL_STMT_RETURN, /* return value?                                (v0.2)    */
+    MFL_STMT_IF,     /* if value body (else else_body)?   else_body: BLOCK or IF */
+    MFL_STMT_WHILE,  /* while value body                                       */
+    MFL_STMT_FOR,    /* for name in value (.. range_end)? body                 */
+    MFL_STMT_BLOCK   /* { body }                                               */
 } MflStmtKind;
 
-typedef struct MflStmt MflStmt;
+typedef struct MflParam MflParam;
+
+struct MflParam {
+    MflText      name;
+    MflTypeExpr *type; /* NULL: not annotated (Any) */
+    int          line;
+    int          column;
+    MflParam    *next;
+};
 
 struct MflStmt {
-    MflStmtKind kind;
-    int         line;
-    int         column;
-    MflStmt    *next;
-    MflText     name;   /* LET, VAR */
-    MflExpr    *target; /* ASSIGN */
-    MflExpr    *value;
+    MflStmtKind  kind;
+    int          line;
+    int          column;
+    MflStmt     *next;
+    MflText      name;       /* LET, VAR, FN, FOR (loop variable) */
+    MflTypeExpr *annotation; /* LET, VAR */
+    MflExpr     *target;     /* ASSIGN */
+    MflExpr     *value;      /* LET VAR ASSIGN EXPR RETURN(may be NULL); IF/WHILE condition; FOR iterable or range start */
+    MflExpr     *range_end;  /* FOR over a range */
+    MflParam    *params;     /* FN */
+    int          param_count;
+    MflTypeExpr *ret_type;   /* FN: NULL if not annotated */
+    MflStmt     *body;       /* FN IF WHILE FOR BLOCK: first statement */
+    MflStmt     *else_body;  /* IF */
+
+    /* Filled in by the checker for the compiler. */
+    MflType      decl_type;  /* LET/VAR: annotated or inferred type; FN: unused */
+    int          is_global;  /* LET/VAR: top-level binding (global slot) */
+    int          slot;       /* LET/VAR/FOR loop variable slot; FN: function number */
+    int          slot2;      /* FOR: hidden slots (range end / array, index) */
+    int          slot3;
+    int          frame_size; /* FN: number of local slots, parameters included */
 };
 
 typedef struct {
     MflStmt *first; /* linked through ->next */
     int      count;
+    int      main_frame_size; /* set by the checker: local slots of top-level blocks */
 } MflProgram;
 
 /* Output sink for the printer. */

@@ -177,8 +177,12 @@ static void test_units_in_api(void)
     CHECK_STATUS(mfl_set_number(S, "a", 1, "m/"), MFL_ERR_UNIT);
     CHECK_STATUS(mfl_set_number(S, "a", 1, "m s"), MFL_ERR_UNIT);
     CHECK_STATUS(mfl_set_number(S, "a", 1, "m^x"), MFL_ERR_UNIT);
+    /* Absolute temperatures do not cross the API (no offset there): use K. */
     CHECK_STATUS(mfl_set_number(S, "a", 1, "degC"), MFL_ERR_UNIT);
-    CHECK(strstr(mfl_error_message(S), "not supported yet") != NULL);
+    CHECK(strstr(mfl_error_message(S), "cannot be passed through the API; use K") != NULL);
+    CHECK_STATUS(mfl_set_number(S, "a", 293.15, "K"), MFL_OK);
+    CHECK_STATUS(mfl_set_number(S, "a", 5, "percent"), MFL_OK);
+    CHECK_STATUS(mfl_set_number(S, "a", 1, "degF"), MFL_ERR_UNIT);
     CHECK_STATUS(mfl_set_number(S, "a", 1, "5"), MFL_ERR_UNIT);
     CHECK_STATUS(mfl_set_number(S, "a", 1, "m + s"), MFL_ERR_UNIT);
 

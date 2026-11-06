@@ -49,7 +49,7 @@ static void expect_unit(const char *name, double scale, MflDim dim, int line)
     MflScale exact = mfl_scale_one();
     double sc;
     MflDim d = mfl_dim_none();
-    MflUnitStatus st = mfl_unit_lookup(name, strlen(name), &exact, &d);
+    MflUnitStatus st = mfl_unit_lookup(name, strlen(name), &exact, &d, NULL);
     sc = mfl_scale_to_double(exact);
     g_checks++;
     if (st != MFL_UNIT_OK || !close_to(sc, scale) || !mfl_dim_equal(d, dim)) {
@@ -125,17 +125,28 @@ static void test_unit_registry(void)
     EXPECT_UNIT("mm", 1e-3, length);                         /* milli-metre */
 
     /* Not units / not prefixable. */
-    CHECK(mfl_unit_lookup("x", 1, &sc, &d) == MFL_UNIT_UNKNOWN);
-    CHECK(mfl_unit_lookup("speed", 5, &sc, &d) == MFL_UNIT_UNKNOWN);
-    CHECK(mfl_unit_lookup("mkg", 3, &sc, &d) == MFL_UNIT_UNKNOWN);   /* prefix on kg */
-    CHECK(mfl_unit_lookup("kmin", 4, &sc, &d) == MFL_UNIT_UNKNOWN);  /* prefix on min */
-    CHECK(mfl_unit_lookup("kh", 2, &sc, &d) == MFL_UNIT_UNKNOWN);
-    CHECK(mfl_unit_lookup("mbar", 4, &sc, &d) == MFL_UNIT_UNKNOWN);
-    CHECK(mfl_unit_lookup("mmm", 3, &sc, &d) == MFL_UNIT_UNKNOWN);   /* one prefix only */
-    CHECK(mfl_unit_lookup("M", 1, &sc, &d) == MFL_UNIT_UNKNOWN);     /* prefix alone */
-    CHECK(mfl_unit_lookup("v", 1, &sc, &d) == MFL_UNIT_UNKNOWN);     /* case-sensitive */
-    CHECK(mfl_unit_lookup("degC", 4, &sc, &d) == MFL_UNIT_UNSUPPORTED);
-    CHECK(mfl_unit_lookup("", 0, &sc, &d) == MFL_UNIT_UNKNOWN);
+    CHECK(mfl_unit_lookup("x", 1, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);
+    CHECK(mfl_unit_lookup("speed", 5, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);
+    CHECK(mfl_unit_lookup("mkg", 3, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);   /* prefix on kg */
+    CHECK(mfl_unit_lookup("kmin", 4, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);  /* prefix on min */
+    CHECK(mfl_unit_lookup("kh", 2, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);
+    CHECK(mfl_unit_lookup("mbar", 4, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);
+    CHECK(mfl_unit_lookup("mmm", 3, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);   /* one prefix only */
+    CHECK(mfl_unit_lookup("M", 1, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);     /* prefix alone */
+    CHECK(mfl_unit_lookup("v", 1, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);     /* case-sensitive */
+    {
+        /* v0.2 temperature units (docs/units.md section 5) */
+        int affine = -1;
+        CHECK(mfl_unit_lookup("degC", 4, &sc, &d, &affine) == MFL_UNIT_OK && affine == 1 &&
+              mfl_dim_equal(d, dim7(0, 0, 0, 0, 1, 0, 0)) && mfl_scale_to_double(sc) == 1.0);
+        CHECK(mfl_unit_lookup("delta_degC", 10, &sc, &d, &affine) == MFL_UNIT_OK && affine == 0 &&
+              mfl_dim_equal(d, dim7(0, 0, 0, 0, 1, 0, 0)));
+        CHECK(mfl_unit_lookup("percent", 7, &sc, &d, &affine) == MFL_UNIT_OK && affine == 0 &&
+              mfl_dim_is_none(d) && mfl_scale_to_double(sc) == 0.01);
+        CHECK(mfl_unit_lookup("mdegC", 5, &sc, &d, NULL) == MFL_UNIT_UNKNOWN); /* no prefix */
+        CHECK(mfl_unit_lookup("degF", 4, &sc, &d, NULL) == MFL_UNIT_UNSUPPORTED);
+    }
+    CHECK(mfl_unit_lookup("", 0, &sc, &d, NULL) == MFL_UNIT_UNKNOWN);
 }
 
 static void expect_format(MflDim d, const char *want, int line)
@@ -395,9 +406,8 @@ static void test_unit_errors(void)
     EXPECT_ERRORS("let t = 2 s\nlet d = 5 mm / t\n",
                   "2:16: unknown unit 't' ('t' is a variable; to combine a quantity with it, "
                   "put the quantity in parentheses, e.g. (5 mm) / t)\n");
-    EXPECT_ERRORS("let x = 25 degC\n",
-                  "1:12: unit 'degC' is not supported yet (temperature scales with an offset "
-                  "are planned); use K\n");
+    EXPECT_ERRORS("let x = 25 degF\n",
+                  "1:12: unit 'degF' is not supported (Fahrenheit is not part of MFL); use K or degC\n");
     EXPECT_ERRORS("let x = 1 m\nprint(x.to(5))\n",
                   "2:12: expected a unit (such as J/mm), found a number\n");
     EXPECT_ERRORS("let x = 1 m\nprint(x.to(\"mm\"))\n",
@@ -415,21 +425,21 @@ static void test_unit_errors(void)
     EXPECT_ERRORS("let x = 1 m\nlet y = x.to\n",
                   "2:9: '.to' must be called with a unit, e.g. x.to(J/mm)\n");
     EXPECT_ERRORS("let x = 1 m\nlet y = x.foo\n",
-                  "2:9: unknown property 'foo' on Quantity[m] (v0.1 quantities have: to, "
+                  "2:9: unknown property 'foo' on Quantity[m] (quantities have: to, "
                   "value_in)\n");
 }
 
 static void test_call_errors(void)
 {
-    EXPECT_ERRORS("f(1)\n", "1:1: undefined function 'f' (v0.1 has only the built-in 'print')\n");
+    EXPECT_ERRORS("f(1)\n", "1:1: undefined function 'f'\n");
     EXPECT_ERRORS("f(y)\n",
-                  "1:3: undefined variable 'y'\n"
-                  "1:1: undefined function 'f' (v0.1 has only the built-in 'print')\n");
+                  "1:1: undefined function 'f'\n"
+                  "1:3: undefined variable 'y'\n"); /* sorted by position */
     EXPECT_ERRORS("let U = 1 V\nU(2)\n",
                   "2:1: cannot call 'U': it is a Quantity[kg*m^2/(s^3*A)], not a function\n");
     EXPECT_ERRORS("let x = (1)(2)\n", "1:10: cannot call a value of type Number\n");
     EXPECT_ERRORS("let v = 1\nlet w = v[0]\n",
-                  "2:9: indexing is not supported yet (planned for v0.2)\n");
+                  "2:9: cannot index a Number (only arrays can be indexed)\n");
     EXPECT_ERRORS("print(1 m + 1 s, y)\n",
                   "1:11: cannot add Quantity[m] and Quantity[s]: dimensions differ\n"
                   "1:18: undefined variable 'y'\n");

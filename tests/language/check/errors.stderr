@@ -13,10 +13,9 @@ tests/language/check/errors.mfl:19:13: error: operator '+' needs numbers, found 
 tests/language/check/errors.mfl:20:17: error: undefined variable 'x'
 tests/language/check/errors.mfl:21:17: error: the exponent of a Quantity[m] must be an integer literal, so that its dimension is known before running
 tests/language/check/errors.mfl:22:14: error: exponent must be dimensionless, found Quantity[m]
-tests/language/check/errors.mfl:23:12: error: unit 'degC' is not supported yet (temperature scales with an offset are planned); use K
 tests/language/check/errors.mfl:26:48: error: '.to' must be called with a unit, e.g. x.to(J/mm)
-tests/language/check/errors.mfl:27:1: error: undefined function 'f' (v0.1 has only the built-in 'print')
+tests/language/check/errors.mfl:27:1: error: undefined function 'f'
 tests/language/check/errors.mfl:28:1: error: cannot call 'U': it is a Quantity[kg*m^2/(s^3*A)], not a function
-tests/language/check/errors.mfl:29:9: error: indexing is not supported yet (planned for v0.2)
-tests/language/check/errors.mfl:32:10: error: unknown property 'foo' on Quantity[kg*m/(s^3*K)] (v0.1 quantities have: to, value_in)
+tests/language/check/errors.mfl:29:9: error: cannot index a Quantity[kg*m^2/(s^3*A)] (only arrays can be indexed)
+tests/language/check/errors.mfl:32:10: error: unknown property 'foo' on Quantity[kg*m/(s^3*K)] (quantities have: to, value_in)
 tests/language/check/errors.mfl:34:11: error: cannot compare Number and String

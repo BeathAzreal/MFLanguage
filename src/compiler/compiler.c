@@ -1,14 +1,14 @@
 /*
  * compiler.c - checked AST -> bytecode. See compiler.h and chunk.h.
  *
- * Globals: every declared name gets a slot, in declaration order (the
- * checker's symbol table).
+ * Layout: the main program first (ending in HALT), then every function.
+ * Frames: a call places the callee and its arguments on the stack; the
+ * arguments become the first local slots of the new frame, followed by the
+ * function's other locals (initialised to nil).
  *
- * Units: a quantity literal becomes a constant whose magnitude is the
- * literal as written and whose unit is the literal's unit (by its
- * normalised text, e.g. "W/(m*K)"). After any arithmetic result that has
- * a dimension, DEFAULT_UNIT gives it the coherent SI display unit of
- * that dimension unless the VM kept the operands' common unit.
+ * Gradual typing: where the checker could not prove a type (MFL_COMPAT_
+ * RUNTIME), the compiler emits CHECK_TYPE / CHECK_LIKE_* so the VM verifies
+ * it; every operation is also re-checked by the VM itself.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -26,7 +26,9 @@ typedef struct {
     MflChunk             *chunk;
     const MflCheckResult *checked;
     MflDiagnostic        *diag_tail;
-    size_t                depth; /* current value-stack depth */
+    size_t                depth;     /* current value-stack depth in the frame */
+    size_t                max_depth; /* of the current frame */
+    const MflFnSig       *fn;        /* function being compiled (NULL: main) */
     int                   failed;
 } Compiler;
 
@@ -79,11 +81,13 @@ static int oom(Compiler *c)
     return 0;
 }
 
+#define TEXT_ARG(t) ((t).length > 40 ? 40 : (int)(t).length), (t).start
+
 /* ------------------------------------------------------------------------ */
 /* Emission                                                                  */
 /* ------------------------------------------------------------------------ */
 
-static int stack_effect(MflOpcode op, unsigned arg)
+static long stack_effect(MflOpcode op, unsigned arg)
 {
     switch (op) {
     case MFL_OP_CONST:
@@ -91,9 +95,11 @@ static int stack_effect(MflOpcode op, unsigned arg)
     case MFL_OP_TRUE:
     case MFL_OP_FALSE:
     case MFL_OP_GET_GLOBAL:
+    case MFL_OP_GET_LOCAL:
         return 1;
     case MFL_OP_POP:
     case MFL_OP_SET_GLOBAL:
+    case MFL_OP_SET_LOCAL:
     case MFL_OP_ADD:
     case MFL_OP_SUB:
     case MFL_OP_MUL:
@@ -106,43 +112,63 @@ static int stack_effect(MflOpcode op, unsigned arg)
     case MFL_OP_LE:
     case MFL_OP_GT:
     case MFL_OP_GE:
+    case MFL_OP_INDEX:
+    case MFL_OP_PUSH:
+    case MFL_OP_RETURN:
         return -1;
+    case MFL_OP_SET_INDEX:
+        return -3;
     case MFL_OP_PRINT:
-        return 1 - (int)arg;
+    case MFL_OP_ARRAY:
+        return 1 - (long)arg;
+    case MFL_OP_CALL:
+        return -(long)arg;
     default:
         return 0;
     }
 }
 
-static void emit_byte(Compiler *c, unsigned char b, int line)
+static void emit_byte(Compiler *c, unsigned char b, int line, int column)
 {
     if (!c->failed) {
-        mfl_chunk_emit(c->chunk, b, line);
+        mfl_chunk_emit(c->chunk, b, line, column);
         oom(c);
     }
 }
 
-/* Emits op (and its u16 operand); returns the operand's code offset. */
-static size_t emit(Compiler *c, MflOpcode op, unsigned arg, int line)
+/* Emits op and its operands; returns the code offset of the first operand. */
+static size_t emit2(Compiler *c, MflOpcode op, unsigned a, unsigned b, int line, int column)
 {
     size_t at;
-    int effect = stack_effect(op, arg);
-    emit_byte(c, (unsigned char)op, line);
+    long effect = stack_effect(op, a);
+    int nops = mfl_opcode_operands(op);
+    emit_byte(c, (unsigned char)op, line, column);
     at = c->chunk->code_len;
-    if (mfl_opcode_operands(op) == 1) {
-        emit_byte(c, (unsigned char)(arg & 0xFF), line);
-        emit_byte(c, (unsigned char)((arg >> 8) & 0xFF), line);
+    if (nops >= 1) {
+        emit_byte(c, (unsigned char)(a & 0xFF), line, column);
+        emit_byte(c, (unsigned char)((a >> 8) & 0xFF), line, column);
+    }
+    if (nops >= 2) {
+        emit_byte(c, (unsigned char)(b & 0xFF), line, column);
+        emit_byte(c, (unsigned char)((b >> 8) & 0xFF), line, column);
     }
     if (effect < 0 && (size_t)(-effect) > c->depth) {
         c->depth = 0; /* cannot happen for checked programs */
     } else {
         c->depth = (size_t)((long)c->depth + effect);
     }
-    if (c->depth > c->chunk->max_stack) {
-        c->chunk->max_stack = c->depth;
+    if (c->depth > c->max_depth) {
+        c->max_depth = c->depth;
     }
     return at;
 }
+
+static size_t emit(Compiler *c, MflOpcode op, unsigned a, int line, int column)
+{
+    return emit2(c, op, a, 0, line, column);
+}
+
+#define EMIT(c, op, a, at) emit((c), (op), (a), (at)->line, (at)->column)
 
 static void patch_jump(Compiler *c, size_t operand_at, int line, int column)
 {
@@ -152,11 +178,25 @@ static void patch_jump(Compiler *c, size_t operand_at, int line, int column)
     }
     offset = c->chunk->code_len - (operand_at + 2);
     if (offset > MFL_CHUNK_MAX_INDEX) {
-        error_at(c, line, column, "expression too large to compile (jump over 65535 bytes)");
+        error_at(c, line, column, "block too large to compile (jump over 65535 bytes)");
         return;
     }
     c->chunk->code[operand_at] = (unsigned char)(offset & 0xFF);
     c->chunk->code[operand_at + 1] = (unsigned char)((offset >> 8) & 0xFF);
+}
+
+static void emit_loop(Compiler *c, size_t loop_start, int line, int column)
+{
+    size_t offset;
+    if (c->failed) {
+        return;
+    }
+    offset = c->chunk->code_len + 3 - loop_start;
+    if (offset > MFL_CHUNK_MAX_INDEX) {
+        error_at(c, line, column, "loop body too large to compile (jump over 65535 bytes)");
+        return;
+    }
+    emit(c, MFL_OP_LOOP, (unsigned)offset, line, column);
 }
 
 static unsigned add_constant(Compiler *c, MflValue v, const MflExpr *at)
@@ -175,20 +215,83 @@ static unsigned add_constant(Compiler *c, MflValue v, const MflExpr *at)
     return (unsigned)k;
 }
 
-static unsigned add_unit(Compiler *c, const char *text, MflScale scale, const MflExpr *at)
+static unsigned add_unit(Compiler *c, const char *text, MflScale scale, MflDim dim, int affine,
+                         int line, int column)
 {
     int u;
     if (c->failed) {
         return 0;
     }
-    u = mfl_chunk_add_unit(c->chunk, text, scale);
+    u = mfl_chunk_add_unit_ex(c->chunk, text, scale, dim, affine, affine ? MFL_DEGC_OFFSET : 0.0);
     if (u < 0) {
         if (!oom(c)) {
-            error_at(c, at->line, at->column, "too many distinct units (limit 65535)");
+            error_at(c, line, column, "too many distinct units (limit 65535)");
         }
         return 0;
     }
     return (unsigned)u;
+}
+
+static MflValue string_value(const char *chars, size_t length)
+{
+    MflValue v;
+    memset(&v, 0, sizeof v);
+    v.kind = MFL_VAL_STRING;
+    v.unit = MFL_NO_UNIT;
+    v.as.string.chars = chars;
+    v.as.string.length = length;
+    return v;
+}
+
+/* String constant (for run-time error contexts). */
+static unsigned context_constant(Compiler *c, const MflExpr *at, const char *fmt, ...)
+{
+    char text[200];
+    va_list ap;
+    char *copy;
+    va_start(ap, fmt);
+    vsnprintf(text, sizeof text, fmt, ap);
+    va_end(ap);
+    copy = mfl_chunk_strdup(c->chunk, text, strlen(text));
+    if (copy == NULL) {
+        oom(c);
+        return 0;
+    }
+    return add_constant(c, string_value(copy, strlen(copy)), at);
+}
+
+/* Run-time type descriptor for a static type. */
+static int type_desc(Compiler *c, MflType t)
+{
+    MflTypeDesc d;
+    int k;
+    if (c->failed) {
+        return -1;
+    }
+    memset(&d, 0, sizeof d);
+    d.kind = t.kind;
+    d.dim = t.dim;
+    d.affine = t.affine;
+    d.elem = -1;
+    if (t.kind == MFL_TYPE_ARRAY && t.elem != NULL && t.elem->kind != MFL_TYPE_ANY) {
+        d.elem = type_desc(c, *t.elem);
+    }
+    k = mfl_chunk_add_type(c->chunk, d);
+    if (k < 0) {
+        if (!oom(c)) {
+            error_at(c, 1, 1, "too many distinct types (limit 65535)");
+        }
+        return 0;
+    }
+    return k;
+}
+
+static void emit_check(Compiler *c, MflType want, const MflExpr *at, unsigned context)
+{
+    int desc = type_desc(c, want);
+    if (desc >= 0) {
+        emit2(c, MFL_OP_CHECK_TYPE, (unsigned)desc, context, at->line, at->column);
+    }
 }
 
 /* ------------------------------------------------------------------------ */
@@ -221,9 +324,7 @@ static int is_product(const MflExpr *e)
 /* Normalised text of a checked unit expression: "J/mm", "W/(m*K)", "m^-2". */
 static void unit_text(const MflExpr *e, UnitText *u)
 {
-    if (e->kind == MFL_EXPR_IDENT) {
-        ut_put(u, e->as.text.start, e->as.text.length);
-    } else if (e->kind == MFL_EXPR_NUMBER) {
+    if (e->kind == MFL_EXPR_IDENT || e->kind == MFL_EXPR_NUMBER) {
         ut_put(u, e->as.text.start, e->as.text.length);
     } else if (e->kind == MFL_EXPR_UNARY) {
         ut_put(u, "-", 1);
@@ -267,7 +368,6 @@ int mfl_unit_text(const MflExpr *unit, char *buf, size_t size)
     return 1;
 }
 
-/* Unit-table index for a checked unit expression. */
 static unsigned unit_of(Compiler *c, const MflExpr *unit)
 {
     UnitText u;
@@ -279,32 +379,13 @@ static unsigned unit_of(Compiler *c, const MflExpr *unit)
         error_at(c, unit->line, unit->column, "unit expression too long (limit 255 characters)");
         return 0;
     }
-    return add_unit(c, u.text, unit->unit_scale, unit);
-}
-
-/* Coherent SI display unit for a dimension. */
-static unsigned si_unit_of(Compiler *c, MflDim dim, const MflExpr *at)
-{
-    char name[128];
-    mfl_dim_display_name(dim, name, sizeof name);
-    return add_unit(c, name, mfl_scale_one(), at);
+    return add_unit(c, u.text, unit->unit_scale, unit->type.dim, unit->type.affine, unit->line,
+                    unit->column);
 }
 
 /* ------------------------------------------------------------------------ */
 /* Expressions                                                               */
 /* ------------------------------------------------------------------------ */
-
-static int global_slot(const Compiler *c, MflText name)
-{
-    const MflSymbol *s;
-    int i = 0;
-    for (s = c->checked->symbols; s != NULL; s = s->next, i++) {
-        if (s->name.length == name.length && memcmp(s->name.start, name.start, name.length) == 0) {
-            return i;
-        }
-    }
-    return -1;
-}
 
 static double number_literal(Compiler *c, const MflExpr *e)
 {
@@ -328,20 +409,15 @@ static double number_literal(Compiler *c, const MflExpr *e)
 /* Decodes \n \t \" \\ (the lexer has validated the escapes). */
 static MflValue string_constant(Compiler *c, const MflExpr *e)
 {
-    MflValue v;
     const char *s = e->as.text.start + 1;
     size_t n = e->as.text.length - 2;
     char *out = mfl_chunk_strdup(c->chunk, s, n);
     size_t i;
     size_t j = 0;
 
-    v.kind = MFL_VAL_STRING;
-    v.unit = MFL_NO_UNIT;
-    v.as.string.chars = "";
-    v.as.string.length = 0;
     if (out == NULL) {
         oom(c);
-        return v;
+        return string_value("", 0);
     }
     for (i = 0; i < n; i++) {
         if (s[i] == '\\' && i + 1 < n) {
@@ -352,17 +428,22 @@ static MflValue string_constant(Compiler *c, const MflExpr *e)
         }
     }
     out[j] = '\0';
-    v.as.string.chars = out;
-    v.as.string.length = j;
+    return string_value(out, j);
+}
+
+static MflValue number_value(double x, int unit, MflDim dim, int affine)
+{
+    MflValue v;
+    memset(&v, 0, sizeof v);
+    v.kind = MFL_VAL_NUMBER;
+    v.unit = unit;
+    v.dim = dim;
+    v.affine = (unsigned char)(affine != 0);
+    v.as.number = x;
     return v;
 }
 
 static void compile_expr(Compiler *c, const MflExpr *e);
-
-static int has_dimension(const MflExpr *e)
-{
-    return e->type.kind == MFL_TYPE_NUMBER && !mfl_dim_is_none(e->type.dim);
-}
 
 static void compile_binary(Compiler *c, const MflExpr *e)
 {
@@ -372,10 +453,17 @@ static void compile_binary(Compiler *c, const MflExpr *e)
     if (op == MFL_TOK_AND || op == MFL_TOK_OR) {
         size_t jump;
         compile_expr(c, e->as.binary.left);
-        jump = emit(c, op == MFL_TOK_AND ? MFL_OP_JUMP_IF_FALSE : MFL_OP_JUMP_IF_TRUE, 0,
-                    e->line);
-        emit(c, MFL_OP_POP, 0, e->line);
+        jump = EMIT(c, op == MFL_TOK_AND ? MFL_OP_JUMP_IF_FALSE : MFL_OP_JUMP_IF_TRUE, 0, e);
+        EMIT(c, MFL_OP_POP, 0, e);
         compile_expr(c, e->as.binary.right);
+        if (e->as.binary.right->type.kind == MFL_TYPE_ANY) {
+            /* the left operand is checked by the jump; the right one here */
+            MflType b;
+            memset(&b, 0, sizeof b);
+            b.kind = MFL_TYPE_BOOL;
+            emit_check(c, b, e->as.binary.right,
+                       context_constant(c, e, "the right operand of '%s'", op == MFL_TOK_AND ? "and" : "or"));
+        }
         patch_jump(c, jump, e->line, e->column);
         return;
     }
@@ -399,10 +487,7 @@ static void compile_binary(Compiler *c, const MflExpr *e)
         error_at(c, e->line, e->column, "internal error: unexpected operator");
         return;
     }
-    emit(c, code, 0, e->line);
-    if (has_dimension(e)) {
-        emit(c, MFL_OP_DEFAULT_UNIT, si_unit_of(c, e->type.dim, e), e->line);
-    }
+    EMIT(c, code, 0, e);
 }
 
 static void compile_call(Compiler *c, const MflExpr *e)
@@ -414,62 +499,95 @@ static void compile_call(Compiler *c, const MflExpr *e)
         MflText name = callee->as.member.name;
         int to = name.length == 2 && memcmp(name.start, "to", 2) == 0;
         compile_expr(c, callee->as.member.object);
-        emit(c, to ? MFL_OP_CONVERT : MFL_OP_VALUE_IN, unit_of(c, e->as.call.args), e->line);
+        EMIT(c, to ? MFL_OP_CONVERT : MFL_OP_VALUE_IN, unit_of(c, e->as.call.args), e);
         return;
     }
-    /* print(...): the only callable in v0.1 */
     if (e->as.call.argc > 255) {
-        error_at(c, e->line, e->column, "too many arguments to print (limit 255)");
+        error_at(c, e->line, e->column, "too many arguments (limit 255)");
         return;
     }
+    if (callee->kind == MFL_EXPR_IDENT && callee->ref_kind == MFL_REF_BUILTIN) {
+        for (a = e->as.call.args; a != NULL; a = a->next) {
+            compile_expr(c, a);
+        }
+        switch ((MflBuiltin)callee->ref_index) {
+        case MFL_BUILTIN_PRINT:
+            EMIT(c, MFL_OP_PRINT, (unsigned)e->as.call.argc, e);
+            break;
+        case MFL_BUILTIN_LEN:
+            EMIT(c, MFL_OP_LEN, 0, e);
+            break;
+        case MFL_BUILTIN_PUSH: {
+            const MflExpr *arr = e->as.call.args;
+            const MflExpr *val = arr->next;
+            if (arr->type.kind == MFL_TYPE_ARRAY && arr->type.elem != NULL &&
+                mfl_type_compat(*arr->type.elem, val->type) == MFL_COMPAT_RUNTIME) {
+                emit_check(c, *arr->type.elem, val, context_constant(c, val, "the value pushed"));
+            }
+            EMIT(c, MFL_OP_PUSH, 0, e);
+            break;
+        }
+        }
+        return;
+    }
+    compile_expr(c, callee);
     for (a = e->as.call.args; a != NULL; a = a->next) {
         compile_expr(c, a);
     }
-    emit(c, MFL_OP_PRINT, (unsigned)e->as.call.argc, e->line);
+    EMIT(c, MFL_OP_CALL, (unsigned)e->as.call.argc, e);
 }
 
 static void compile_expr(Compiler *c, const MflExpr *e)
 {
     MflValue v;
+    const MflExpr *el;
 
     if (c->failed) {
         return;
     }
     switch (e->kind) {
     case MFL_EXPR_NUMBER:
-        v.kind = MFL_VAL_NUMBER;
-        v.unit = MFL_NO_UNIT;
-        v.as.number = number_literal(c, e);
-        emit(c, MFL_OP_CONST, add_constant(c, v, e), e->line);
+        v = number_value(number_literal(c, e), MFL_NO_UNIT, mfl_dim_none(), 0);
+        EMIT(c, MFL_OP_CONST, add_constant(c, v, e), e);
         break;
     case MFL_EXPR_QUANTITY:
-        v.kind = MFL_VAL_NUMBER;
-        v.as.number = number_literal(c, e->as.quantity.value);
-        v.unit = (int)unit_of(c, e->as.quantity.unit);
-        emit(c, MFL_OP_CONST, add_constant(c, v, e), e->line);
+        v = number_value(number_literal(c, e->as.quantity.value), (int)unit_of(c, e->as.quantity.unit),
+                         e->type.dim, e->type.affine);
+        EMIT(c, MFL_OP_CONST, add_constant(c, v, e), e);
         break;
     case MFL_EXPR_STRING:
         v = string_constant(c, e);
-        emit(c, MFL_OP_CONST, add_constant(c, v, e), e->line);
+        EMIT(c, MFL_OP_CONST, add_constant(c, v, e), e);
         break;
     case MFL_EXPR_BOOL:
-        emit(c, e->as.boolean ? MFL_OP_TRUE : MFL_OP_FALSE, 0, e->line);
+        EMIT(c, e->as.boolean ? MFL_OP_TRUE : MFL_OP_FALSE, 0, e);
         break;
     case MFL_EXPR_NIL:
-        emit(c, MFL_OP_NIL, 0, e->line);
+        EMIT(c, MFL_OP_NIL, 0, e);
         break;
-    case MFL_EXPR_IDENT: {
-        int slot = global_slot(c, e->as.text);
-        if (slot < 0) {
+    case MFL_EXPR_IDENT:
+        switch (e->ref_kind) {
+        case MFL_REF_GLOBAL:
+            EMIT(c, MFL_OP_GET_GLOBAL, (unsigned)e->ref_index, e);
+            break;
+        case MFL_REF_LOCAL:
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)e->ref_index, e);
+            break;
+        case MFL_REF_FUNCTION:
+            memset(&v, 0, sizeof v);
+            v.kind = MFL_VAL_FUNCTION;
+            v.unit = MFL_NO_UNIT;
+            v.as.function = e->ref_index;
+            EMIT(c, MFL_OP_CONST, add_constant(c, v, e), e);
+            break;
+        default:
             error_at(c, e->line, e->column, "internal error: unresolved name");
-            return;
+            break;
         }
-        emit(c, MFL_OP_GET_GLOBAL, (unsigned)slot, e->line);
         break;
-    }
     case MFL_EXPR_UNARY:
         compile_expr(c, e->as.unary.operand);
-        emit(c, e->as.unary.op == MFL_TOK_NOT ? MFL_OP_NOT : MFL_OP_NEG, 0, e->line);
+        EMIT(c, e->as.unary.op == MFL_TOK_NOT ? MFL_OP_NOT : MFL_OP_NEG, 0, e);
         break;
     case MFL_EXPR_BINARY:
         compile_binary(c, e);
@@ -477,10 +595,269 @@ static void compile_expr(Compiler *c, const MflExpr *e)
     case MFL_EXPR_CALL:
         compile_call(c, e);
         break;
+    case MFL_EXPR_ARRAY:
+        if (e->as.array.count > 65535) {
+            error_at(c, e->line, e->column, "array literal too long (limit 65535 elements)");
+            return;
+        }
+        for (el = e->as.array.elems; el != NULL; el = el->next) {
+            compile_expr(c, el);
+        }
+        EMIT(c, MFL_OP_ARRAY, (unsigned)e->as.array.count, e);
+        break;
+    case MFL_EXPR_INDEX:
+        compile_expr(c, e->as.index.object);
+        compile_expr(c, e->as.index.index);
+        EMIT(c, MFL_OP_INDEX, 0, e);
+        break;
     default:
         error_at(c, e->line, e->column, "internal error: expression cannot be compiled");
         break;
     }
+}
+
+/* ------------------------------------------------------------------------ */
+/* Statements                                                                */
+/* ------------------------------------------------------------------------ */
+
+static void compile_block(Compiler *c, const MflStmt *first);
+
+static void store(Compiler *c, int is_global, int slot, const MflStmt *at)
+{
+    EMIT(c, is_global ? MFL_OP_SET_GLOBAL : MFL_OP_SET_LOCAL, (unsigned)slot, at);
+}
+
+static MflType bool_type(void)
+{
+    MflType t;
+    memset(&t, 0, sizeof t);
+    t.kind = MFL_TYPE_BOOL;
+    return t;
+}
+
+static MflType plain_number(void)
+{
+    MflType t;
+    memset(&t, 0, sizeof t);
+    t.kind = MFL_TYPE_NUMBER;
+    t.dim = mfl_dim_none();
+    return t;
+}
+
+static void compile_condition(Compiler *c, const MflExpr *cond, const char *what)
+{
+    compile_expr(c, cond);
+    if (cond->type.kind == MFL_TYPE_ANY) {
+        emit_check(c, bool_type(), cond, context_constant(c, cond, "the condition of '%s'", what));
+    }
+}
+
+static void compile_if(Compiler *c, const MflStmt *s)
+{
+    size_t to_else;
+    size_t to_end;
+    compile_condition(c, s->value, "if");
+    to_else = EMIT(c, MFL_OP_JUMP_IF_FALSE, 0, s);
+    EMIT(c, MFL_OP_POP, 0, s);
+    compile_block(c, s->body);
+    to_end = EMIT(c, MFL_OP_JUMP, 0, s);
+    patch_jump(c, to_else, s->line, s->column);
+    c->depth++; /* on the jump path the condition is still on the stack */
+    EMIT(c, MFL_OP_POP, 0, s);
+    if (s->else_body != NULL) {
+        if (s->else_body->kind == MFL_STMT_IF) {
+            compile_if(c, s->else_body);
+        } else {
+            compile_block(c, s->else_body->body);
+        }
+    }
+    patch_jump(c, to_end, s->line, s->column);
+}
+
+static void compile_stmt(Compiler *c, const MflStmt *s)
+{
+    MflCompat k;
+    if (c->failed) {
+        return;
+    }
+    switch (s->kind) {
+    case MFL_STMT_LET:
+    case MFL_STMT_VAR:
+        compile_expr(c, s->value);
+        if (s->annotation != NULL && mfl_type_compat(s->decl_type, s->value->type) == MFL_COMPAT_RUNTIME) {
+            emit_check(c, s->decl_type, s->value, context_constant(c, s->value, "the value of '%.*s'", TEXT_ARG(s->name)));
+        }
+        store(c, s->is_global, s->slot, s);
+        break;
+    case MFL_STMT_ASSIGN: {
+        const MflExpr *t = s->target;
+        if (t->kind == MFL_EXPR_INDEX) {
+            const MflType *el = t->as.index.object->type.kind == MFL_TYPE_ARRAY ? t->as.index.object->type.elem : NULL;
+            compile_expr(c, t->as.index.object);
+            compile_expr(c, t->as.index.index);
+            compile_expr(c, s->value);
+            if (el != NULL && mfl_type_compat(*el, s->value->type) == MFL_COMPAT_RUNTIME) {
+                emit_check(c, *el, s->value, context_constant(c, s->value, "the new element"));
+            }
+            EMIT(c, MFL_OP_SET_INDEX, 0, t);
+            break;
+        }
+        compile_expr(c, s->value);
+        k = mfl_type_compat(t->type, s->value->type);
+        if (t->type.kind == MFL_TYPE_ANY) {
+            unsigned ctx = context_constant(c, t, "'%.*s'", TEXT_ARG(t->as.text));
+            emit2(c, t->ref_kind == MFL_REF_GLOBAL ? MFL_OP_CHECK_LIKE_GLOBAL : MFL_OP_CHECK_LIKE_LOCAL,
+                  (unsigned)t->ref_index, ctx, t->line, t->column);
+        } else if (k == MFL_COMPAT_RUNTIME) {
+            emit_check(c, t->type, s->value, context_constant(c, t, "the new value of '%.*s'", TEXT_ARG(t->as.text)));
+        }
+        EMIT(c, t->ref_kind == MFL_REF_GLOBAL ? MFL_OP_SET_GLOBAL : MFL_OP_SET_LOCAL,
+             (unsigned)t->ref_index, t);
+        break;
+    }
+    case MFL_STMT_EXPR:
+        compile_expr(c, s->value);
+        EMIT(c, MFL_OP_POP, 0, s);
+        break;
+    case MFL_STMT_FN:
+        break; /* compiled separately */
+    case MFL_STMT_RETURN:
+        if (s->value != NULL) {
+            compile_expr(c, s->value);
+            if (c->fn != NULL && c->fn->ret_annotated &&
+                mfl_type_compat(c->fn->ret, s->value->type) == MFL_COMPAT_RUNTIME) {
+                emit_check(c, c->fn->ret, s->value,
+                           context_constant(c, s->value, "the return value of '%.*s'", TEXT_ARG(c->fn->name)));
+            }
+        } else {
+            EMIT(c, MFL_OP_NIL, 0, s);
+        }
+        EMIT(c, MFL_OP_RETURN, 0, s);
+        break;
+    case MFL_STMT_IF:
+        compile_if(c, s);
+        break;
+    case MFL_STMT_WHILE: {
+        size_t start = c->chunk->code_len;
+        size_t exit;
+        compile_condition(c, s->value, "while");
+        exit = EMIT(c, MFL_OP_JUMP_IF_FALSE, 0, s);
+        EMIT(c, MFL_OP_POP, 0, s);
+        compile_block(c, s->body);
+        emit_loop(c, start, s->line, s->column);
+        patch_jump(c, exit, s->line, s->column);
+        c->depth++; /* the false condition is still on the stack here */
+        EMIT(c, MFL_OP_POP, 0, s);
+        break;
+    }
+    case MFL_STMT_FOR: {
+        size_t start;
+        size_t exit;
+        MflValue one = number_value(1.0, MFL_NO_UNIT, mfl_dim_none(), 0);
+        if (s->range_end != NULL) {
+            /* for i in a..b:  i = a; end = b; while i < end { body; i = i + 1 } */
+            compile_expr(c, s->value);
+            if (s->value->type.kind == MFL_TYPE_ANY) {
+                emit_check(c, plain_number(), s->value, context_constant(c, s->value, "the start of the range"));
+            }
+            EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot, s);
+            compile_expr(c, s->range_end);
+            if (s->range_end->type.kind == MFL_TYPE_ANY) {
+                emit_check(c, plain_number(), s->range_end, context_constant(c, s->range_end, "the end of the range"));
+            }
+            EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot2, s);
+            start = c->chunk->code_len;
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot, s);
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot2, s);
+            EMIT(c, MFL_OP_LT, 0, s);
+            exit = EMIT(c, MFL_OP_JUMP_IF_FALSE, 0, s);
+            EMIT(c, MFL_OP_POP, 0, s);
+            compile_block(c, s->body);
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot, s);
+            EMIT(c, MFL_OP_CONST, add_constant(c, one, s->value), s);
+            EMIT(c, MFL_OP_ADD, 0, s);
+            EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot, s);
+        } else {
+            /* for x in array:  arr = e; idx = 0; while idx < len(arr) { x = arr[idx]; body; idx += 1 } */
+            compile_expr(c, s->value);
+            if (s->value->type.kind == MFL_TYPE_ANY) {
+                MflType at;
+                memset(&at, 0, sizeof at);
+                at.kind = MFL_TYPE_ARRAY;
+                emit_check(c, at, s->value, context_constant(c, s->value, "the value after 'in'"));
+            }
+            EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot2, s);
+            EMIT(c, MFL_OP_CONST, add_constant(c, number_value(0.0, MFL_NO_UNIT, mfl_dim_none(), 0), s->value), s);
+            EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot3, s);
+            start = c->chunk->code_len;
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot3, s);
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot2, s);
+            EMIT(c, MFL_OP_LEN, 0, s);
+            EMIT(c, MFL_OP_LT, 0, s);
+            exit = EMIT(c, MFL_OP_JUMP_IF_FALSE, 0, s);
+            EMIT(c, MFL_OP_POP, 0, s);
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot2, s);
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot3, s);
+            EMIT(c, MFL_OP_INDEX, 0, s);
+            EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot, s);
+            compile_block(c, s->body);
+            EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot3, s);
+            EMIT(c, MFL_OP_CONST, add_constant(c, one, s->value), s);
+            EMIT(c, MFL_OP_ADD, 0, s);
+            EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot3, s);
+        }
+        emit_loop(c, start, s->line, s->column);
+        patch_jump(c, exit, s->line, s->column);
+        c->depth++; /* the false comparison is still on the stack here */
+        EMIT(c, MFL_OP_POP, 0, s);
+        break;
+    }
+    case MFL_STMT_BLOCK:
+        compile_block(c, s->body);
+        break;
+    }
+}
+
+static void compile_block(Compiler *c, const MflStmt *first)
+{
+    const MflStmt *s;
+    for (s = first; s != NULL && !c->failed; s = s->next) {
+        compile_stmt(c, s);
+    }
+}
+
+static void compile_function(Compiler *c, const MflFnSig *sig, MflFunction *out)
+{
+    const MflStmt *decl = sig->decl;
+    const MflParam *prm;
+    int i;
+
+    c->fn = sig;
+    c->depth = (size_t)decl->frame_size;
+    c->max_depth = c->depth;
+    out->entry = c->chunk->code_len;
+    /* Prologue: annotated parameters are checked when the function runs
+     * (the call may come through a value whose type was not known). */
+    for (prm = decl->params, i = 0; prm != NULL; prm = prm->next, i++) {
+        if (prm->type != NULL && sig->params[i].kind != MFL_TYPE_ERROR) {
+            MflExpr at;
+            memset(&at, 0, sizeof at);
+            at.line = prm->line;
+            at.column = prm->column;
+            emit(c, MFL_OP_GET_LOCAL, (unsigned)i, prm->line, prm->column);
+            emit_check(c, sig->params[i], &at,
+                       context_constant(c, &at, "argument %d of '%.*s' ('%.*s')", i + 1,
+                                        TEXT_ARG(sig->name), TEXT_ARG(prm->name)));
+            emit(c, MFL_OP_POP, 0, prm->line, prm->column);
+        }
+    }
+    compile_block(c, decl->body);
+    /* Falling off the end returns nil (unannotated functions only: the
+     * checker rejects annotated ones that can reach this point). */
+    emit(c, MFL_OP_NIL, 0, decl->line, decl->column);
+    emit(c, MFL_OP_RETURN, 0, decl->line, decl->column);
+    out->max_stack = c->max_depth + 1;
+    c->fn = NULL;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -493,6 +870,8 @@ int mfl_compile(const MflProgram *program, const MflCheckResult *checked, size_t
     Compiler c;
     const MflStmt *s;
     const MflSymbol *sym;
+    size_t n = 0;
+    int k;
 
     memset(out, 0, sizeof *out);
     mfl_chunk_init(&out->chunk, memory_limit);
@@ -503,33 +882,51 @@ int mfl_compile(const MflProgram *program, const MflCheckResult *checked, size_t
     c.checked = checked;
 
     for (sym = checked->symbols; sym != NULL; sym = sym->next) {
-        out->chunk.global_count++;
+        n++;
     }
-    if (out->chunk.global_count > MFL_CHUNK_MAX_INDEX) {
+    if (n > MFL_CHUNK_MAX_INDEX) {
         error_at(&c, 1, 1, "too many variables (limit 65535)");
+        return 0;
+    }
+    out->chunk.global_count = n;
+    out->chunk.global_names = (const char **)mfl_chunk_alloc(&out->chunk, (n + 1) * sizeof(char *));
+    out->chunk.functions = (MflFunction *)mfl_chunk_alloc(
+        &out->chunk, (size_t)(checked->function_count + 1) * sizeof(MflFunction));
+    if (oom(&c)) {
+        return 0;
+    }
+    n = 0;
+    for (sym = checked->symbols; sym != NULL; sym = sym->next, n++) {
+        out->chunk.global_names[n] = mfl_chunk_strdup(&out->chunk, sym->name.start, sym->name.length);
+    }
+    out->chunk.function_count = (size_t)checked->function_count;
+    for (k = 0; k < checked->function_count; k++) {
+        const MflFnSig *f = checked->functions[k];
+        out->chunk.functions[k].name = mfl_chunk_strdup(&out->chunk, f->name.start, f->name.length);
+        out->chunk.functions[k].arity = f->arity;
+        out->chunk.functions[k].frame_size = f->decl->frame_size;
+        out->chunk.functions[k].line = f->line;
+        out->chunk.functions[k].column = f->column;
+    }
+    if (oom(&c)) {
+        return 0;
     }
 
+    /* Main program. */
+    out->chunk.main_frame_size = program->main_frame_size;
+    c.depth = (size_t)program->main_frame_size;
+    c.max_depth = c.depth;
     for (s = program->first; s != NULL && !c.failed; s = s->next) {
-        int slot;
-        switch (s->kind) {
-        case MFL_STMT_LET:
-        case MFL_STMT_VAR:
-        case MFL_STMT_ASSIGN:
-            compile_expr(&c, s->value);
-            slot = global_slot(&c, s->kind == MFL_STMT_ASSIGN ? s->target->as.text : s->name);
-            if (slot < 0) {
-                error_at(&c, s->line, s->column, "internal error: unresolved name");
-                break;
-            }
-            emit(&c, MFL_OP_SET_GLOBAL, (unsigned)slot, s->line);
-            break;
-        case MFL_STMT_EXPR:
-            compile_expr(&c, s->value);
-            emit(&c, MFL_OP_POP, 0, s->line);
-            break;
-        }
+        compile_stmt(&c, s);
     }
-    emit(&c, MFL_OP_HALT, 0, 0);
+    emit(&c, MFL_OP_HALT, 0, 0, 0);
+    out->chunk.main_max_stack = c.max_depth + 1;
+    out->chunk.max_stack = out->chunk.main_max_stack;
+
+    /* Functions. */
+    for (k = 0; k < checked->function_count && !c.failed; k++) {
+        compile_function(&c, checked->functions[k], &out->chunk.functions[k]);
+    }
     oom(&c);
     return !c.failed && !out->out_of_memory;
 }
