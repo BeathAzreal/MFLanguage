@@ -123,6 +123,22 @@ if(MFL_BUILD_EXAMPLES)
 endif()
 
 # ---------------------------------------------------------------------------
+# Installation / binary package (cmake --install build --prefix <dir>).
+# The CI archives the installed tree for Windows, Linux and macOS.
+# ---------------------------------------------------------------------------
+install(TARGETS mfl RUNTIME DESTINATION bin)
+install(TARGETS mfl_core mfl_numerical ARCHIVE DESTINATION lib)
+install(FILES include/mfl/mfl.h DESTINATION include/mfl)
+if(MFL_BUILD_EXAMPLES)
+    install(TARGETS mfl_heat_host RUNTIME DESTINATION bin)
+endif()
+install(DIRECTORY examples/ DESTINATION examples)
+install(FILES docs/language-spec.md docs/heat-conduction.md docs/embedding.md docs/units.md
+        DESTINATION docs)
+install(FILES LICENSE DESTINATION .)
+install(FILES packaging/README-package.md DESTINATION . RENAME README.md)
+
+# ---------------------------------------------------------------------------
 # Tests (smoke tests only; language conformance tests are registered as
 # soon as the interpreter can execute scripts).
 # ---------------------------------------------------------------------------
