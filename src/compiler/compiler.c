@@ -253,6 +253,20 @@ static void unit_text(const MflExpr *e, UnitText *u)
     }
 }
 
+int mfl_unit_text(const MflExpr *unit, char *buf, size_t size)
+{
+    UnitText u;
+    u.len = 0;
+    u.overflow = 0;
+    u.text[0] = '\0';
+    unit_text(unit, &u);
+    if (u.overflow || u.len + 1 > size) {
+        return 0;
+    }
+    memcpy(buf, u.text, u.len + 1);
+    return 1;
+}
+
 /* Unit-table index for a checked unit expression. */
 static unsigned unit_of(Compiler *c, const MflExpr *unit)
 {

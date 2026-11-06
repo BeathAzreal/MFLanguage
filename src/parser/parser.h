@@ -69,4 +69,9 @@ int mfl_parse(const char *src, size_t length, size_t memory_limit, MflParseResul
 
 void mfl_parse_free(MflParseResult *result);
 
+/* Parses a standalone unit expression such as "J/mm" or "W/(m*K)" (the
+ * grammar of a quantity literal's unit). On success returns 1 and sets
+ * *unit to the expression, which lives in out->arena. */
+int mfl_parse_unit(const char *src, size_t length, MflParseResult *out, MflExpr **unit);
+
 #endif /* MFL_PARSER_H */

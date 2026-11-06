@@ -28,6 +28,13 @@ typedef enum {
 
 MflVmStatus mfl_vm_run(const MflChunk *chunk, MflWriteFn write, void *ctx, size_t memory_limit);
 
+/* Same, but globals[0 .. init_count) start with init[] (host inputs), and
+ * on success the final value of every global is copied to snapshot
+ * (chunk->global_count entries) if it is not NULL. */
+MflVmStatus mfl_vm_run_globals(const MflChunk *chunk, const MflValue *init, size_t init_count,
+                               MflValue *snapshot, MflWriteFn write, void *ctx,
+                               size_t memory_limit);
+
 /* Writes a value the way print() shows it: "480 J/mm", "0.8", "true",
  * "nil", or the string's characters. */
 void mfl_vm_format_value(const MflChunk *chunk, const MflValue *v, MflWriteFn write, void *ctx);

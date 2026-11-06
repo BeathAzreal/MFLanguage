@@ -687,6 +687,11 @@ static void check_declaration(Checker *c, MflStmt *s)
                       TEXT_ARG(s->name));
         return;
     }
+    if (prev != NULL && prev->line == 0) {
+        error_at_stmt(c, s, "'%.*s' is already defined as an input by the host program",
+                      TEXT_ARG(s->name));
+        return;
+    }
     if (prev != NULL) {
         error_at_stmt(c, s, "'%.*s' is already declared at %d:%d", TEXT_ARG(s->name), prev->line,
                       prev->column);
@@ -715,6 +720,11 @@ static void check_assignment(Checker *c, MflStmt *s)
         return;
     }
     s->target->type = sym->type;
+    if (sym->line == 0) {
+        error_at(c, s->target, "cannot assign to '%.*s': it is an input provided by the host program",
+                 TEXT_ARG(name));
+        return;
+    }
     if (!sym->is_var) {
         error_at(c, s->target,
                  "cannot assign to '%.*s': it is declared with 'let' at %d:%d "
@@ -737,13 +747,28 @@ static void check_assignment(Checker *c, MflStmt *s)
 
 int mfl_check(MflProgram *program, size_t memory_limit, MflCheckResult *out)
 {
+    return mfl_check_with_inputs(program, NULL, 0, memory_limit, out);
+}
+
+int mfl_check_with_inputs(MflProgram *program, const MflCheckInput *inputs, size_t input_count,
+                          size_t memory_limit, MflCheckResult *out)
+{
     Checker c;
     MflStmt *s;
+    size_t i;
 
     memset(out, 0, sizeof *out);
     mfl_arena_init(&out->arena, memory_limit);
     memset(&c, 0, sizeof c);
     c.res = out;
+
+    for (i = 0; i < input_count && !c.stop; i++) {
+        MflStmt fake;
+        memset(&fake, 0, sizeof fake);
+        fake.kind = MFL_STMT_LET;
+        fake.name = inputs[i].name; /* line 0 marks a host input */
+        declare(&c, &fake, inputs[i].type);
+    }
 
     for (s = program->first; s != NULL && !c.stop; s = s->next) {
         switch (s->kind) {
@@ -760,6 +785,30 @@ int mfl_check(MflProgram *program, size_t memory_limit, MflCheckResult *out)
         }
     }
     return !out->out_of_memory && out->diagnostic_count == 0;
+}
+
+int mfl_check_unit(MflExpr *unit, MflScale *scale, MflDim *dim, char *msg, size_t msg_size)
+{
+    MflCheckResult res;
+    Checker c;
+    MflType t;
+    int ok;
+
+    memset(&res, 0, sizeof res);
+    mfl_arena_init(&res.arena, 0);
+    memset(&c, 0, sizeof c);
+    c.res = &res;
+    t = check_unit(&c, unit);
+    ok = t.kind == MFL_TYPE_UNIT && res.diagnostic_count == 0;
+    if (ok) {
+        *scale = unit->unit_scale;
+        *dim = t.dim;
+    } else if (msg_size > 0) {
+        snprintf(msg, msg_size, "%s",
+                 res.diagnostics != NULL ? res.diagnostics->message : "invalid unit");
+    }
+    mfl_arena_free(&res.arena);
+    return ok;
 }
 
 void mfl_check_free(MflCheckResult *result)
