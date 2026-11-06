@@ -61,26 +61,25 @@ static MflH1Status fail(char *msg, size_t size, MflH1Status st, const char *fmt,
     return st;
 }
 
-/* Shortest round-trip decimal (locale independent). */
-typedef struct {
-    char s[MFL_NUMBER_BUF];
-} Num;
-
-static Num num(double x)
+/* Shortest round-trip decimal (locale independent), written into buf. */
+static const char *fmt_num(double x, char *buf)
 {
-    Num n;
-    mfl_number_format(x, n.s, sizeof n.s);
-    return n;
+    mfl_number_format(x, buf, MFL_NUMBER_BUF);
+    return buf;
 }
+
+/* NUM(x): the text of x in a buffer that lives until the end of the
+ * enclosing block (a compound literal), so several fit in one call. */
+#define NUM(x) fmt_num((x), (char[MFL_NUMBER_BUF]){0})
 
 static void set_given(MflH1Config *c, MflH1Param p, const char *given, double si)
 {
     if (given != NULL && given[0] != '\0') {
         snprintf(c->given[p], MFL_H1_GIVEN, "%s", given);
     } else if (param_units[p][0] != '\0') {
-        snprintf(c->given[p], MFL_H1_GIVEN, "%s %s", num(si).s, param_units[p]);
+        snprintf(c->given[p], MFL_H1_GIVEN, "%s %s", NUM(si), param_units[p]);
     } else {
-        snprintf(c->given[p], MFL_H1_GIVEN, "%s", num(si).s);
+        snprintf(c->given[p], MFL_H1_GIVEN, "%s", NUM(si));
     }
 }
 
@@ -125,12 +124,12 @@ MflH1Status mfl_h1_set_positive(MflH1Config *c, MflH1Param p, double value, cons
     }
     if (!isfinite(value)) {
         return fail(msg, msg_size, MFL_H1_INVALID, "%s (%s) must be finite, found %s",
-                    param_names[p], param_meaning[p], given != NULL && given[0] ? given : num(value).s);
+                    param_names[p], param_meaning[p], given != NULL && given[0] ? given : NUM(value));
     }
     if (!(value > 0)) {
         return fail(msg, msg_size, MFL_H1_INVALID, "%s (%s) must be positive, found %s",
                     param_names[p], param_meaning[p],
-                    given != NULL && given[0] ? given : num(value).s);
+                    given != NULL && given[0] ? given : NUM(value));
     }
     switch (p) {
     case MFL_H1_P_LENGTH: c->length = value; break;
@@ -150,15 +149,15 @@ static MflH1Status check_count(const char *name, double v, double lo, double hi,
 {
     if (!isfinite(v) || v != floor(v)) {
         return fail(msg, msg_size, MFL_H1_INVALID, "%s must be a whole number, found %s", name,
-                    num(v).s);
+                    NUM(v));
     }
     if (v < lo) {
         return fail(msg, msg_size, MFL_H1_INVALID, "%s must be at least %s, found %s", name,
-                    num(lo).s, num(v).s);
+                    NUM(lo), NUM(v));
     }
     if (v > hi) {
-        return fail(msg, msg_size, MFL_H1_LIMIT, "%s = %s is above the limit of %s", name, num(v).s,
-                    num(hi).s);
+        return fail(msg, msg_size, MFL_H1_LIMIT, "%s = %s is above the limit of %s", name, NUM(v),
+                    NUM(hi));
     }
     return MFL_H1_OK;
 }
@@ -194,12 +193,12 @@ static MflH1Status check_kelvin(const char *what, double k, const char *given, c
 {
     if (!isfinite(k)) {
         return fail(msg, msg_size, MFL_H1_INVALID, "%s must be finite, found %s", what,
-                    given != NULL && given[0] ? given : num(k).s);
+                    given != NULL && given[0] ? given : NUM(k));
     }
     if (!(k > 0)) {
         return fail(msg, msg_size, MFL_H1_INVALID,
                     "%s must be an absolute temperature above 0 K, found %s", what,
-                    given != NULL && given[0] ? given : num(k).s);
+                    given != NULL && given[0] ? given : NUM(k));
     }
     return MFL_H1_OK;
 }
@@ -334,7 +333,7 @@ MflH1Status mfl_h1_max_time_step(const MflH1Config *c, double *dt_max, char *msg
         return fail(msg, msg_size, MFL_H1_INVALID,
                     "the stability limit dx^2 / (2 alpha) = %s s is not a positive finite number "
                     "(dx = %s m, alpha = %s m^2/s): check the properties and the mesh",
-                    num(*dt_max).s, num(dx).s, num(alpha).s);
+                    NUM(*dt_max), NUM(dx), NUM(alpha));
     }
     return MFL_H1_OK;
 }
@@ -429,7 +428,7 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
                     "explicit scheme, time_step <= dx^2 / (2 alpha) = %s s (Fourier number "
                     "alpha*dt/dx^2 = %s > 1/2; dx = %s m, alpha = %s m^2/s). Use a smaller "
                     "time_step or fewer nodes",
-                    num(c->time_step).s, num(dt_max).s, num(fo).s, num(dx).s, num(alpha).s);
+                    NUM(c->time_step), NUM(dt_max), NUM(fo), NUM(dx), NUM(alpha));
     }
 
     /* Steps: as many full steps as fit; a remainder below
@@ -439,7 +438,7 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
     if (full > (double)MFL_H1_MAX_STEPS) {
         return fail(msg, msg_size, MFL_H1_LIMIT,
                     "end_time / time_step = %s steps is above the limit of %s steps per run",
-                    num(full).s, num((double)MFL_H1_MAX_STEPS).s);
+                    NUM(full), NUM((double)MFL_H1_MAX_STEPS));
     }
     rem = c->end_time - full * c->time_step;
     if (rem <= MFL_H1_STEP_TOLERANCE * c->time_step) {
@@ -454,7 +453,7 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
     }
     if (steps > MFL_H1_MAX_STEPS) {
         return fail(msg, msg_size, MFL_H1_LIMIT, "%lu time steps are above the limit of %s per run",
-                    (unsigned long)steps, num((double)MFL_H1_MAX_STEPS).s);
+                    (unsigned long)steps, NUM((double)MFL_H1_MAX_STEPS));
     }
     every = has(c, MFL_H1_P_SAMPLE_EVERY) ? c->sample_every : 1;
     samples = steps / every + 1 + (steps % every != 0 ? 1 : 0);
@@ -462,8 +461,8 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
         return fail(msg, msg_size, MFL_H1_LIMIT,
                     "the output would hold %lu samples x %lu nodes = %s temperatures, above the "
                     "limit of %s; increase sample_every (now %lu) or use fewer nodes",
-                    (unsigned long)samples, (unsigned long)n, num((double)samples * (double)n).s,
-                    num((double)MFL_H1_MAX_VALUES).s, (unsigned long)every);
+                    (unsigned long)samples, (unsigned long)n, NUM((double)samples * (double)n),
+                    NUM((double)MFL_H1_MAX_VALUES), (unsigned long)every);
     }
     if (c->memory_limit != 0) {
         double bytes = ((double)samples * (double)n + 2.0 * (double)samples + 3.0 * (double)n) *
@@ -472,7 +471,7 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
             return fail(msg, msg_size, MFL_H1_NO_MEMORY,
                         "the results need %s bytes, above the memory limit of %s bytes; increase "
                         "sample_every or use fewer nodes",
-                        num(bytes).s, num((double)c->memory_limit).s);
+                        NUM(bytes), NUM((double)c->memory_limit));
         }
     }
 
