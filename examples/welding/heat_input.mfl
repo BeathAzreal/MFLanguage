@@ -1,7 +1,7 @@
-# heat_input.mfl - Arc welding heat input (proposed MFL syntax)
+# heat_input.mfl - Arc welding heat input (MFL v0.1)
 #
-# STATUS: syntax proposal. This program is NOT executable yet: the MFL
-# lexer, parser, compiler and VM are still under development.
+# STATUS: runs with the v0.1 core (`mfl examples/welding/heat_input.mfl`)
+# and prints 480 J/mm. This is conformance test #1 of the language.
 #
 # Net heat input per unit length:  Q = eta * U * I / v
 #   eta = 0.8, U = 20 V, I = 150 A, v = 5 mm/s

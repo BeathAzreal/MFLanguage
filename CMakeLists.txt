@@ -27,7 +27,11 @@ add_library(mfl_core
     src/parser/parser.c
     src/runtime/arena.c
     src/runtime/units.c
+    src/runtime/number.c
     src/compiler/checker.c
+    src/compiler/chunk.c
+    src/compiler/compiler.c
+    src/vm/vm.c
 )
 # include/ holds the public C API; src/ holds internal headers
 # (e.g. lexer/lexer.h) used by the core, the CLI and the unit tests.
@@ -111,6 +115,15 @@ if(MFL_BUILD_TESTS)
     mfl_set_warnings(test_checker)
     add_test(NAME checker_unit COMMAND test_checker)
 
+    # Number parsing/formatting and compiler + VM unit tests.
+    foreach(t number vm)
+        add_executable(test_${t} tests/unit/test_${t}.c)
+        target_link_libraries(test_${t} PRIVATE mfl_core)
+        target_include_directories(test_${t} PRIVATE ${PROJECT_SOURCE_DIR}/src)
+        mfl_set_warnings(test_${t})
+        add_test(NAME ${t}_unit COMMAND test_${t})
+    endforeach()
+
     # Token-stream golden tests: `mfl --tokens <name>.mfl` must print
     # exactly tests/language/tokens/<name>.tokens.
     function(mfl_add_token_test name source expected_exit)
@@ -161,4 +174,35 @@ if(MFL_BUILD_TESTS)
     mfl_add_check_test(heat_input examples/welding/heat_input.mfl 0)
     mfl_add_check_test(steel_properties examples/thermal/steel_properties.mfl 0)
     mfl_add_check_test(errors tests/language/check/errors.mfl 1)
+
+    # Execution tests: `mfl <file>` (or `mfl --bytecode <file>`) is run
+    # from the source directory; stdout must equal the expected file and
+    # stderr must be empty.
+    function(mfl_add_run_test name source expected)
+        add_test(NAME ${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DPROGRAM=$<TARGET_FILE:mfl>
+                "-DARGS=${source}"
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
+                -DEXPECTED_STDERR=${PROJECT_SOURCE_DIR}/tests/cmake/empty.txt
+                -DWORKDIR=${PROJECT_SOURCE_DIR}
+                -P ${PROJECT_SOURCE_DIR}/tests/cmake/compare_output.cmake)
+    endfunction()
+
+    # Language conformance tests: every tests/language/conformance_*.mfl
+    # must print exactly its .expected file.
+    file(GLOB MFL_CONFORMANCE CONFIGURE_DEPENDS
+        ${PROJECT_SOURCE_DIR}/tests/language/conformance_*.mfl)
+    foreach(src ${MFL_CONFORMANCE})
+        get_filename_component(base ${src} NAME_WE)
+        mfl_add_run_test(${base} tests/language/${base}.mfl tests/language/${base}.expected)
+    endforeach()
+
+    mfl_add_run_test(run_heat_input examples/welding/heat_input.mfl
+        tests/language/run/heat_input.expected)
+    mfl_add_run_test(run_steel_properties examples/thermal/steel_properties.mfl
+        tests/language/run/steel_properties.expected)
+    mfl_add_run_test(run_hello examples/basic/hello.mfl tests/language/run/hello.expected)
+    mfl_add_run_test(bytecode_heat_input "--bytecode;examples/welding/heat_input.mfl"
+        tests/language/run/heat_input.bytecode)
 endif()

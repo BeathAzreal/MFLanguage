@@ -1,11 +1,10 @@
 # Examples
 
-All examples use the **proposed** MFL syntax described in
-[`docs/language-spec.md`](../docs/language-spec.md). None of them can be
-executed yet; the interpreter is under development.
+All examples run with the v0.1 core (`./build/mfl <file>`); the syntax is
+described in [`docs/language-spec.md`](../docs/language-spec.md).
 
 | Folder | Content |
 |--------|---------|
 | `basic/` | Language basics |
-| `thermal/` | Heat conduction examples (planned) |
-| `welding/` | Welding process calculations (`heat_input.mfl`) |
+| `thermal/` | Steel thermal properties, diffusivity and Fourier number (`steel_properties.mfl`) |
+| `welding/` | Welding heat input (`heat_input.mfl`, prints `480 J/mm`) |
