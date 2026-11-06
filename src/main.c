@@ -1,9 +1,10 @@
 /*
  * main.c - `mfl` command-line driver.
  *
- * Only the lexer exists so far. `mfl --tokens file.mfl` prints the token
- * stream; running a script still exits with status 2 because the parser,
- * compiler and VM are not implemented yet.
+ * Lexer and parser exist so far. `mfl --tokens file.mfl` prints the token
+ * stream, `mfl --ast file.mfl` the syntax tree. Running a script checks
+ * its syntax, then exits with status 2 because the compiler and VM are
+ * not implemented yet.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -13,15 +14,17 @@
 
 #include "lexer/lexer.h"
 #include "mfl/mfl.h"
+#include "parser/parser.h"
 
 static void usage(FILE *out)
 {
     fprintf(out,
             "usage: mfl --version | --help\n"
             "       mfl --tokens <file.mfl>   print the token stream\n"
-            "       mfl <file.mfl>            run a script (not implemented yet)\n"
+            "       mfl --ast <file.mfl>      print the syntax tree\n"
+            "       mfl <file.mfl>            check syntax; execution not implemented yet\n"
             "\n"
-            "MFL %s - pre-alpha. Only the lexer is implemented.\n",
+            "MFL %s - pre-alpha. Lexer and parser are implemented.\n",
             mfl_version());
 }
 
@@ -116,6 +119,42 @@ static int dump_tokens(const char *src, size_t len)
     return errors;
 }
 
+static void write_stdout(void *ctx, const char *data, size_t length)
+{
+    (void)ctx;
+    fwrite(data, 1, length, stdout);
+}
+
+/* Parses a file, prints diagnostics to stderr as "file:line:col: error: msg".
+ * Returns 0 on success, 1 on syntax errors or I/O failure. If print_ast is
+ * set, prints the tree to stdout when there are no errors. */
+static int parse_file(const char *path, int print_ast)
+{
+    MflParseResult res;
+    const MflDiagnostic *d;
+    size_t len = 0;
+    char *src = read_file(path, &len);
+    int ok;
+
+    if (src == NULL) {
+        fprintf(stderr, "mfl: cannot read '%s'\n", path);
+        return 1;
+    }
+    ok = mfl_parse(src, len, 0, &res);
+    for (d = res.diagnostics; d != NULL; d = d->next) {
+        fprintf(stderr, "%s:%d:%d: error: %s\n", path, d->line, d->column, d->message);
+    }
+    if (res.out_of_memory) {
+        fprintf(stderr, "mfl: out of memory while parsing '%s'\n", path);
+    }
+    if (ok && print_ast) {
+        mfl_ast_print_program(&res.program, write_stdout, NULL);
+    }
+    mfl_parse_free(&res);
+    free(src);
+    return ok ? 0 : 1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
@@ -147,7 +186,22 @@ int main(int argc, char **argv)
         free(src);
         return errors > 0 ? 1 : 0;
     }
-    fprintf(stderr, "mfl: cannot run '%s': the interpreter is not implemented yet (v%s).\n",
+    if (strcmp(argv[1], "--ast") == 0) {
+        if (argc != 3) {
+            usage(stderr);
+            return 1;
+        }
+        return parse_file(argv[2], 1);
+    }
+    if (argv[1][0] == '-') {
+        fprintf(stderr, "mfl: unknown option '%s'\n", argv[1]);
+        usage(stderr);
+        return 1;
+    }
+    if (parse_file(argv[1], 0) != 0) {
+        return 1;
+    }
+    fprintf(stderr, "mfl: '%s': syntax OK, but execution is not implemented yet (v%s).\n",
             argv[1], mfl_version());
     return 2;
 }
