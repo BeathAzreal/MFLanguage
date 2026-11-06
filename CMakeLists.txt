@@ -27,16 +27,25 @@ target_include_directories(mfl_core PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
 )
 
-if(MSVC)
-    target_compile_options(mfl_core PRIVATE /W4)
-    if(MFL_WARNINGS_AS_ERRORS)
-        target_compile_options(mfl_core PRIVATE /WX)
+# Warning flags shared by every MFL target. MFL_WARNINGS_AS_ERRORS adds
+# /WX (MSVC) or -Werror (GCC, Clang and other GCC-compatible compilers).
+function(mfl_set_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+        if(MFL_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE /WX)
+        endif()
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+        if(MFL_WARNINGS_AS_ERRORS)
+            target_compile_options(${target} PRIVATE -Werror)
+        endif()
     endif()
-else()
-    target_compile_options(mfl_core PRIVATE -Wall -Wextra -Wpedantic)
-    if(MFL_WARNINGS_AS_ERRORS)
-        target_compile_options(mfl_core PRIVATE -Werror)
-    endif()
+endfunction()
+
+mfl_set_warnings(mfl_core)
+
+if(NOT MSVC)
     # libm will be required by the numerical runtime.
     find_library(MFL_LIBM m)
     if(MFL_LIBM)
@@ -49,9 +58,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(mfl src/main.c)
 target_link_libraries(mfl PRIVATE mfl_core)
-if(NOT MSVC)
-    target_compile_options(mfl PRIVATE -Wall -Wextra -Wpedantic)
-endif()
+mfl_set_warnings(mfl)
 
 # ---------------------------------------------------------------------------
 # Tests (smoke tests only; language conformance tests are registered as
@@ -59,8 +66,15 @@ endif()
 # ---------------------------------------------------------------------------
 if(MFL_BUILD_TESTS)
     enable_testing()
+    # Must match MFL_VERSION_STRING in include/mfl/mfl.h.
+    set(MFL_VERSION_STRING "${PROJECT_VERSION}-dev")
+    # Escape regex metacharacters so the version's dots are literal.
+    string(REGEX REPLACE "([][.^$*+?()|\\\\])" "\\\\\\1"
+           MFL_VERSION_REGEX "${MFL_VERSION_STRING}")
+    # Anchored: the whole output must be "mfl <version>" plus one line
+    # ending (LF, or CRLF on Windows). This rejects e.g. "mfl 0.0.10-dev".
     add_test(NAME cli_version COMMAND mfl --version)
     set_tests_properties(cli_version PROPERTIES
-        PASS_REGULAR_EXPRESSION "mfl ${PROJECT_VERSION}")
+        PASS_REGULAR_EXPRESSION "^mfl ${MFL_VERSION_REGEX}\r?\n$")
     add_test(NAME cli_help COMMAND mfl --help)
 endif()
