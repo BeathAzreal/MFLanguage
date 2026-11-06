@@ -39,6 +39,7 @@ português, prontos para virar texto de relatório, monografia ou artigo.
 | Data | Entrada | Resumo |
 |------|---------|--------|
 | 2026-11-05 | [Criação do projeto](diario/2026-11-05_criacao-do-projeto.md) | Repositório, estrutura, documentação, CMake, CI, branches |
+| 2026-11-06 | [Analisador léxico](diario/2026-11-06_lexer.md) | Lexer, `mfl --tokens`, testes unitários e de referência, sanitizers |
 
 ## Possíveis enquadramentos acadêmicos
 

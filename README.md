@@ -58,7 +58,8 @@ It is **not executable yet**.*
 
 | Feature | Status |
 |---------|--------|
-| Lexer, parser and AST | Planned (v0.1) |
+| Lexer | **Implemented** (v0.1) — `mfl --tokens` |
+| Parser and AST | Planned (v0.1) |
 | Bytecode compiler | Planned (v0.1) |
 | Custom stack-based virtual machine | Planned (v0.1) |
 | `double` precision as the default numeric type | Planned (v0.1) |
@@ -122,7 +123,7 @@ MFLanguage/
 ├── docs/                Language spec, architecture, units, numerics, validation
 ├── research/            Research log for IC/TCC (Portuguese): diary, ADRs, AI-use statement, references
 ├── src/
-│   ├── lexer/           Tokenizer (planned)
+│   ├── lexer/           Tokenizer (implemented)
 │   ├── parser/          Parser + AST (planned)
 │   ├── compiler/        AST → bytecode (planned)
 │   ├── vm/              Bytecode virtual machine (planned)
@@ -151,8 +152,9 @@ ctest --test-dir build --output-on-failure
 ./build/mfl --version
 ```
 
-At this stage the `mfl` binary only prints its version/help; running a
-script exits with an explicit "not implemented yet" error.
+At this stage the `mfl` binary can print the token stream of a file
+(`./build/mfl --tokens examples/welding/heat_input.mfl`); running a script
+exits with an explicit "not implemented yet" error.
 
 ## Roadmap
 
@@ -186,8 +188,9 @@ materials, welding, manufacturing and numerical methods.
 
 - ✅ Repository structure and design documents
 - ✅ CMake build (C11) and CI workflow (Linux/macOS/Windows)
-- ✅ `mfl` CLI stub (`--version`, `--help`)
-- ⏳ Lexer, parser, compiler, VM — **not started**
+- ✅ `mfl` CLI (`--version`, `--help`, `--tokens`)
+- ✅ Lexer with unit tests and token-stream golden tests
+- ⏳ Parser, compiler, VM — **not started**
 - ⏳ Units and dimensional analysis — **design only**
 - ⏳ Numerical and welding modules — **design only**
 - ⏳ The example programs in `examples/` **cannot be executed yet**

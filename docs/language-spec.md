@@ -20,24 +20,78 @@
 
 ## 2. Source text
 
-- Encoding: UTF-8. Identifiers are ASCII in v0.1 (`[A-Za-z_][A-Za-z0-9_]*`).
-- Line comments start with `#`.
-- Statements are separated by newlines; `;` is allowed as an explicit
-  separator. A line ending inside `(`/`[` or after a binary operator
-  continues on the next line.
+> **Implemented** (lexer, v0.1): everything in sections 2 and 3.
+> Reference implementation: `src/lexer/lexer.c`; inspect with
+> `mfl --tokens file.mfl`.
+
+- Encoding: UTF-8; a leading byte-order mark is ignored. Non-ASCII
+  characters are allowed **only inside strings and comments** in v0.1.
+- Identifiers are ASCII: `[A-Za-z_][A-Za-z0-9_]*`, case-sensitive.
+- Line comments start with `#` and run to the end of the line.
+- Whitespace: space, tab, carriage return. `\r\n` behaves like `\n`.
+- Positions are reported as `line:column`, both 1-based; columns count
+  Unicode code points (a tab counts as one column).
+
+### 2.1 Statement separators
+
+Statements are separated by a newline or by `;`. The lexer emits a single
+`NEWLINE` token for any run of line breaks, blank lines and comment-only
+lines. A line break does **not** produce `NEWLINE` when:
+
+1. it is inside `( … )` or `[ … ]` (at any nesting depth);
+2. the previous token cannot end an expression: a binary operator
+   (`+ - * / ^ % == != < <= > >= and or`), `not`, `=`, `,`, `.`, `..`,
+   `->`, `:`;
+3. the previous token is `;` or `{`, or it is the start of the file.
+
+So an expression can be continued by ending a line with an operator, but
+**not** by starting the next line with one:
+
+```mfl
+let q = eta * U * I /     # continues
+        v
+let r = a
+- b                       # two statements: `a`, then `-b`
+```
 
 ## 3. Lexical elements
 
-| Token kind | Examples |
-|------------|----------|
-| Number | `20`, `0.8`, `1.5e-3`, `6.02e23` |
-| String | `"Hello"`, with escapes `\n \t \" \\` |
-| Identifier | `voltage`, `heat_input`, `T0` |
-| Keyword | `let`, `var`, `fn`, `return`, `if`, `else`, `while`, `for`, `in`, `true`, `false`, `nil`, `and`, `or`, `not`, `import` |
-| Operators | `+ - * / ^ % == != < <= > >= = . , ( ) [ ] { } :` |
+| Token kind | Rule | Examples |
+|------------|------|----------|
+| Number | `digits ('.' digits)? ([eE] [+-]? digits)?` | `20`, `0.8`, `1.5e-3`, `6.02e23` |
+| String | `"…"` on one line; escapes `\n \t \" \\` | `"Hello"` |
+| Identifier | see §2 | `voltage`, `heat_input`, `T0`, `mm` |
+| Keyword | reserved identifiers | `let var fn return if else while for in true false nil and or not import` |
+| Operators | longest match | `+ - * / ^ % = == != < <= > >= . .. -> , : ; ( ) [ ] { }` |
+
+Number details:
+
+- No sign: `-3` is `MINUS NUMBER`.
+- A `.` belongs to the number only if a digit follows, so `0..n` is
+  `NUMBER DOT_DOT IDENT` and `5.to(J)` is `NUMBER DOT IDENT …`.
+- An exponent needs at least one digit; otherwise `e` starts an
+  identifier (`2e` is `NUMBER IDENT`).
+- A unit may follow with or without a space: `5mm` and `5 mm` both give
+  `NUMBER IDENT`.
+- The lexer only validates the shape. Conversion to `double` happens in
+  a later stage (it must be locale-independent and correctly rounded).
 
 Unit symbols (`V`, `A`, `mm`, `J`, …) are lexed as identifiers; the parser
-decides whether an identifier is a unit (see §5).
+decides whether an identifier is a unit (see §5). `µ`/`Ω` cannot be used
+in v0.1 code; use `u`/`ohm` (see `units.md`).
+
+### 3.1 Lexical errors
+
+Errors do not stop lexing; each produces an error token with its position
+and scanning continues, so several errors are reported at once:
+
+| Input | Error |
+|-------|-------|
+| `@`, `$`, `` ` ``, control characters, NUL | unexpected character |
+| `!` not followed by `=` | unexpected `!` (use `not`) |
+| non-ASCII outside a string/comment | one error per code point |
+| `"abc` (end of line or file) | unterminated string |
+| `"a\qb"` | invalid escape sequence |
 
 ## 4. Values and types
 
