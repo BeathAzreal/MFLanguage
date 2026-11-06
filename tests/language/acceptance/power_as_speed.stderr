@@ -1,0 +1,1 @@
+tests/language/acceptance/power_as_speed.mfl:9:31: error: argument 3 of 'heat_input' ('speed') must be Quantity[m/s] (declared as Quantity[mm/s]), found Quantity[kg*m^2/s^3]
