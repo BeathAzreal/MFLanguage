@@ -2046,7 +2046,8 @@ int mfl_check_with_inputs(MflProgram *program, const MflCheckInput *inputs, size
     return !out->out_of_memory && out->diagnostic_count == 0;
 }
 
-int mfl_check_unit(MflExpr *unit, MflScale *scale, MflDim *dim, char *msg, size_t msg_size)
+int mfl_check_unit_ex(MflExpr *unit, MflScale *scale, MflDim *dim, int *affine, char *msg,
+                      size_t msg_size)
 {
     MflCheckResult res;
     Checker c;
@@ -2059,19 +2060,31 @@ int mfl_check_unit(MflExpr *unit, MflScale *scale, MflDim *dim, char *msg, size_
     c.res = &res;
     t = check_unit(&c, unit);
     ok = t.kind == MFL_TYPE_UNIT && res.diagnostic_count == 0;
-    if (ok && t.affine) {
-        ok = 0;
-        snprintf(msg, msg_size, "absolute temperatures (degC) cannot be passed through the API; use K");
-    } else if (ok) {
+    if (ok) {
         *scale = unit->unit_scale;
         *dim = t.dim;
+        *affine = t.affine;
     } else if (msg_size > 0) {
         snprintf(msg, msg_size, "%s",
                  res.diagnostics != NULL ? res.diagnostics->message : "invalid unit");
     }
     mfl_arena_free(&res.arena);
     free(c.locals);
+    free(c.modules);
     return ok;
+}
+
+int mfl_check_unit(MflExpr *unit, MflScale *scale, MflDim *dim, char *msg, size_t msg_size)
+{
+    int affine = 0;
+    if (!mfl_check_unit_ex(unit, scale, dim, &affine, msg, msg_size)) {
+        return 0;
+    }
+    if (affine) {
+        snprintf(msg, msg_size, "absolute temperatures (degC) cannot be passed through the API; use K");
+        return 0;
+    }
+    return 1;
 }
 
 void mfl_check_free(MflCheckResult *result)

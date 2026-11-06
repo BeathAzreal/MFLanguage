@@ -80,6 +80,15 @@ endfunction()
 
 target_link_libraries(mfl_core PUBLIC mfl_numerical)
 
+# Reproducible floating point: no fused multiply-add contraction (Clang
+# contracts a + b*c by default on ARM64, e.g. macOS runners), so the solver
+# and the VM give bit-identical results on every platform. MSVC does not
+# contract by default (/fp:precise).
+if(NOT MSVC)
+    target_compile_options(mfl_numerical PRIVATE -ffp-contract=off)
+    target_compile_options(mfl_core PRIVATE -ffp-contract=off)
+endif()
+
 mfl_set_warnings(mfl_core)
 mfl_set_warnings(mfl_numerical)
 
@@ -107,6 +116,10 @@ if(MFL_BUILD_EXAMPLES)
     add_executable(mfl_embed_example examples/embedding/heat_input_host.c)
     target_link_libraries(mfl_embed_example PRIVATE mfl_core)
     mfl_set_warnings(mfl_embed_example)
+    # v0.3: the heated-bar case from C (same solver as the CLI).
+    add_executable(mfl_heat_host examples/embedding/heat_bar_host.c)
+    target_link_libraries(mfl_heat_host PRIVATE mfl_core)
+    mfl_set_warnings(mfl_heat_host)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -419,6 +432,15 @@ if(MFL_BUILD_TESTS)
         "-DARGS=examples/basic/hello.mfl|--cvs|x.csv")
 
     if(MFL_BUILD_EXAMPLES)
+        # CLI and C host give the same results for the same case (exit 0
+        # only if the final profiles agree within 1e-9 K).
+        add_test(NAME heat_host_matches_cli
+            COMMAND mfl_heat_host examples/thermal/bar_heated_end.mfl
+                ${MFL_OUT}/bar_heated_end.csv
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+        set_tests_properties(heat_host_matches_cli PROPERTIES
+            FIXTURES_REQUIRED bar_csv
+            PASS_REGULAR_EXPRESSION "max [|]C API - model[|] = 0 K.*max [|]C API - CLI CSV[|] = 0 K.*same results: OK")
         add_test(NAME run_embed_example
             COMMAND ${CMAKE_COMMAND}
                 -DPROGRAM=$<TARGET_FILE:mfl_embed_example>

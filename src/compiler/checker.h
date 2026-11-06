@@ -104,6 +104,11 @@ int mfl_check_with_inputs(MflProgram *program, const MflCheckInput *inputs, size
  * error into msg and returns 0. */
 int mfl_check_unit(MflExpr *unit, MflScale *scale, MflDim *dim, char *msg, size_t msg_size);
 
+/* Same, but accepts degC (affine = 1: an absolute temperature on the
+ * Celsius scale). Used where the API expects absolute temperatures (v0.3). */
+int mfl_check_unit_ex(MflExpr *unit, MflScale *scale, MflDim *dim, int *affine, char *msg,
+                      size_t msg_size);
+
 void mfl_check_free(MflCheckResult *result);
 
 /* "Number", "Quantity[m/s]", "Bool", "String", "Nil", ... */

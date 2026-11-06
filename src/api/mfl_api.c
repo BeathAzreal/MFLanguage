@@ -20,8 +20,12 @@
 #include "compiler/checker.h"
 #include "compiler/compiler.h"
 #include "compiler/loader.h"
+#include "heat1d.h"
+#include "heat1d_export.h"
+#include "modules/natives.h"
 #include "lexer/lexer.h"
 #include "parser/parser.h"
+#include "runtime/number.h"
 #include "runtime/units.h"
 #include "vm/vm.h"
 
@@ -56,6 +60,17 @@ struct MflState {
     int       error_oom; /* the message itself could not be stored */
     unsigned long long max_steps;
     int       file_imports; /* import "file.mfl" allowed (v0.3) */
+    MflHeat1D *last_heat;   /* simulation of the last successful run (v0.3) */
+};
+
+struct MflHeat1D {
+    MflState           *S;
+    MflH1Config         config;
+    MflH1Result         result; /* result.T == NULL before a successful run */
+    int                 state_owned;
+    char              **sources; /* provenance for the metadata (scripts only) */
+    unsigned long long *hashes;
+    size_t              source_count;
 };
 
 
@@ -167,6 +182,8 @@ const char *mfl_status_name(MflStatus status)
     case MFL_ERR_NOT_RUN: return "MFL_ERR_NOT_RUN";
     case MFL_ERR_INTERNAL: return "MFL_ERR_INTERNAL";
     case MFL_ERR_RUNTIME: return "MFL_ERR_RUNTIME";
+    case MFL_ERR_SIMULATION: return "MFL_ERR_SIMULATION";
+    case MFL_ERR_IO: return "MFL_ERR_IO";
     }
     return "MFL_ERR_UNKNOWN";
 }
@@ -319,6 +336,10 @@ void mfl_state_free(MflState *S)
     mfl_clear_inputs(S);
     free(S->inputs);
     free_results(S);
+    if (S->last_heat != NULL) {
+        S->last_heat->state_owned = 0;
+        mfl_heat1d_free(S->last_heat);
+    }
     free(S->error);
     free(S);
 }
@@ -554,6 +575,8 @@ MflScript *mfl_script_compile(MflState *S, const char *source, size_t length,
     return compile_script(S, source, length, source_name, &st);
 }
 
+static MflHeat1D *heat_from_session(MflState *S, MflNativeSession *sess, const MflLoadResult *ld);
+
 MflStatus mfl_script_run(MflState *S, MflScript *sc)
 {
     MflValue *init = NULL;
@@ -563,6 +586,8 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
     const MflSymbol *sym;
     MflVmStatus vs;
     MflVmError verr;
+    MflNativeSession sess;
+    MflHeat1D *heat = NULL;
     size_t i;
     size_t n;
 
@@ -612,8 +637,12 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
         MflVmLimits limits;
         limits.memory_limit = S->cfg.memory_limit;
         limits.max_steps = S->max_steps;
-        vs = mfl_vm_execute(chunk, init, sc->input_count, snap, S->cfg.output, S->cfg.user,
-                            &limits, &verr);
+        mfl_native_session_init(&sess, S->cfg.memory_limit);
+        vs = mfl_vm_execute_ex(chunk, init, sc->input_count, snap, S->cfg.output, S->cfg.user,
+                               &limits, &sess, &verr);
+    }
+    if (vs != MFL_VM_OK) {
+        mfl_native_session_free(&sess);
     }
     if (vs == MFL_VM_OUT_OF_MEMORY) {
         goto oom;
@@ -633,6 +662,16 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
         return fail(S, MFL_ERR_INTERNAL, "internal error: invalid bytecode");
     }
 
+    /* The last simulation of the run (heat.run()) moves to the state. */
+    if (sess.result.T != NULL) {
+        heat = heat_from_session(S, &sess, &sc->load);
+        if (heat == NULL) {
+            mfl_native_session_free(&sess);
+            goto oom;
+        }
+    }
+    mfl_native_session_free(&sess);
+
     /* Keep every top-level variable, numbers in SI. */
     for (i = 0, sym = sc->check.symbols; sym != NULL && i < n; sym = sym->next, i++) {
         Result *r = &results[i];
@@ -641,6 +680,10 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
             size_t k;
             for (k = 0; k < i; k++) {
                 free(results[k].name);
+            }
+            if (heat != NULL) {
+                heat->state_owned = 0;
+                mfl_heat1d_free(heat);
             }
             goto oom;
         }
@@ -661,6 +704,11 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
     S->results = results;
     S->result_count = i;
     S->has_run = 1;
+    if (S->last_heat != NULL) {
+        S->last_heat->state_owned = 0;
+        mfl_heat1d_free(S->last_heat);
+    }
+    S->last_heat = heat;
     free(init);
     free(snap);
     return MFL_OK;
@@ -687,4 +735,546 @@ MflStatus mfl_eval(MflState *S, const char *source, size_t length, const char *s
     st = mfl_script_run(S, sc);
     mfl_script_free(sc);
     return st;
+}
+
+/* ------------------------------------------------------------------------ */
+/* 1D heat conduction (v0.3)                                                 */
+/* ------------------------------------------------------------------------ */
+
+#define H1_MSG 700
+
+static MflStatus h1_status(MflState *S, MflH1Status st, const char *msg, int running)
+{
+    switch (st) {
+    case MFL_H1_OK: return MFL_OK;
+    case MFL_H1_NO_MEMORY: return fail(S, MFL_ERR_MEMORY, "%s", msg);
+    case MFL_H1_UNSTABLE: return fail(S, MFL_ERR_SIMULATION, "%s", msg);
+    default: return fail(S, running ? MFL_ERR_SIMULATION : MFL_ERR_ARGUMENT, "%s", msg);
+    }
+}
+
+static MflHeat1D *heat_alloc(MflState *S)
+{
+    MflHeat1D *h = (MflHeat1D *)calloc(1, sizeof *h);
+    if (h == NULL) {
+        return NULL;
+    }
+    h->S = S;
+    mfl_h1_config_init(&h->config);
+    return h;
+}
+
+static MflHeat1D *heat_from_session(MflState *S, MflNativeSession *sess, const MflLoadResult *ld)
+{
+    MflHeat1D *h = heat_alloc(S);
+    int i;
+    if (h == NULL) {
+        return NULL;
+    }
+    h->state_owned = 1;
+    h->result = sess->result; /* moved */
+    memset(&sess->result, 0, sizeof sess->result);
+    if (ld != NULL && ld->file_count > 0) {
+        h->sources = (char **)calloc((size_t)ld->file_count, sizeof *h->sources);
+        h->hashes = (unsigned long long *)calloc((size_t)ld->file_count, sizeof *h->hashes);
+        if (h->sources == NULL || h->hashes == NULL) {
+            h->state_owned = 0;
+            mfl_heat1d_free(h);
+            return NULL;
+        }
+        for (i = 0; i < ld->file_count; i++) {
+            h->sources[i] = dup_string(ld->names[i]);
+            h->hashes[i] = ld->files[i].hash;
+            if (h->sources[i] == NULL) {
+                h->source_count = (size_t)i;
+                h->state_owned = 0;
+                mfl_heat1d_free(h);
+                return NULL;
+            }
+        }
+        h->source_count = (size_t)ld->file_count;
+    }
+    return h;
+}
+
+MflHeat1D *mfl_heat1d_new(MflState *S)
+{
+    MflHeat1D *h;
+    if (S == NULL) {
+        return NULL;
+    }
+    error_clear(S);
+    h = heat_alloc(S);
+    if (h == NULL) {
+        fail(S, MFL_ERR_MEMORY, "out of memory");
+    }
+    return h;
+}
+
+void mfl_heat1d_free(MflHeat1D *h)
+{
+    size_t i;
+    if (h == NULL || h->state_owned) {
+        return; /* state-owned results are freed with their state */
+    }
+    mfl_h1_config_free(&h->config);
+    mfl_h1_result_free(&h->result);
+    for (i = 0; i < h->source_count; i++) {
+        free(h->sources[i]);
+    }
+    free(h->sources);
+    free(h->hashes);
+    free(h);
+}
+
+const MflHeat1D *mfl_state_heat1d(MflState *S)
+{
+    if (S == NULL) {
+        return NULL;
+    }
+    error_clear(S);
+    return S->last_heat;
+}
+
+/* Resolves a unit (degC allowed). */
+static MflStatus resolve_unit_abs(MflState *S, const char *what, const char *unit,
+                                  MflScale *scale, MflDim *dim, int *affine, char *norm,
+                                  size_t norm_size)
+{
+    MflParseResult pr;
+    MflExpr *u = NULL;
+    char msg[300];
+    *scale = mfl_scale_one();
+    *dim = mfl_dim_none();
+    *affine = 0;
+    norm[0] = '\0';
+    if (unit == NULL || unit[0] == '\0') {
+        return MFL_OK;
+    }
+    if (!mfl_parse_unit(unit, strlen(unit), &pr, &u)) {
+        MflStatus st = pr.out_of_memory ? MFL_ERR_MEMORY : MFL_ERR_UNIT;
+        fail(S, st, "%s: invalid unit '%s': %s", what, unit,
+             pr.diagnostics != NULL ? pr.diagnostics->message : "out of memory");
+        mfl_parse_free(&pr);
+        return st;
+    }
+    if (!mfl_check_unit_ex(u, scale, dim, affine, msg, sizeof msg) ||
+        !mfl_unit_text(u, norm, norm_size)) {
+        mfl_parse_free(&pr);
+        return fail(S, MFL_ERR_UNIT, "%s: invalid unit '%s': %s", what, unit, msg);
+    }
+    mfl_parse_free(&pr);
+    return MFL_OK;
+}
+
+static MflDim dim3(int m, int kg, int s, int k)
+{
+    MflDim d = mfl_dim_none();
+    d.exp[0] = (signed char)m;
+    d.exp[1] = (signed char)kg;
+    d.exp[2] = (signed char)s;
+    d.exp[4] = (signed char)k;
+    return d;
+}
+
+/* Converts value [unit] to SI, requiring dimension `want` (named `what`).
+ * absolute: a temperature (K or degC; delta_degC rejected). */
+static MflStatus to_si(MflState *S, const char *what, double value, const char *unit, MflDim want,
+                       int absolute, double *si, char *given, size_t given_size)
+{
+    MflScale scale;
+    MflDim dim;
+    int affine;
+    char norm[UNIT_TEXT_MAX];
+    MflStatus st = resolve_unit_abs(S, what, unit, &scale, &dim, &affine, norm, sizeof norm);
+    if (st != MFL_OK) {
+        return st;
+    }
+    if (!mfl_dim_equal(dim, want) || (affine && !absolute)) {
+        char have[96];
+        char need[96];
+        mfl_dim_format(dim, have, sizeof have);
+        mfl_dim_format(want, need, sizeof need);
+        return fail(S, MFL_ERR_UNIT, "%s: unit '%s' has dimension %s; %s needs %s%s", what,
+                    unit != NULL ? unit : "", have, what, need,
+                    absolute ? " (an absolute temperature: K or degC)" : "");
+    }
+    if (absolute && strstr(norm, "delta_deg") != NULL) {
+        return fail(S, MFL_ERR_UNIT,
+                    "%s: '%s' is a temperature difference; %s needs an absolute temperature (K or "
+                    "degC)",
+                    what, unit, what);
+    }
+    *si = mfl_scale_convert(value, scale, mfl_scale_one()) + (affine ? MFL_DEGC_OFFSET : 0.0);
+    if (given != NULL) {
+        char num[64];
+        mfl_number_format(value, num, sizeof num);
+        snprintf(given, given_size, "%s %s", num, unit);
+    }
+    return MFL_OK;
+}
+
+/* SI value -> unit (NULL/"": SI), requiring dimension `want`. */
+static MflStatus from_si(MflState *S, const char *what, double si, const char *unit, MflDim want,
+                         double *out)
+{
+    MflScale scale;
+    MflDim dim;
+    int affine;
+    char norm[UNIT_TEXT_MAX];
+    MflStatus st;
+    if (unit == NULL || unit[0] == '\0') {
+        *out = si;
+        return MFL_OK;
+    }
+    st = resolve_unit_abs(S, what, unit, &scale, &dim, &affine, norm, sizeof norm);
+    if (st != MFL_OK) {
+        return st;
+    }
+    if (!mfl_dim_equal(dim, want)) {
+        char have[96];
+        char need[96];
+        mfl_dim_format(dim, have, sizeof have);
+        mfl_dim_format(want, need, sizeof need);
+        return fail(S, MFL_ERR_UNIT, "%s: cannot express a value of dimension %s in '%s' (%s)", what,
+                    need, unit, have);
+    }
+    if (strstr(norm, "delta_deg") != NULL) {
+        return fail(S, MFL_ERR_UNIT, "%s: temperatures are absolute; use K or degC, not '%s'", what,
+                    unit);
+    }
+    *out = mfl_scale_convert(si - (affine ? MFL_DEGC_OFFSET : 0.0), mfl_scale_one(), scale);
+    return MFL_OK;
+}
+
+#define H1_BEGIN(h)                                                       \
+    do {                                                                  \
+        if ((h) == NULL || (h)->S == NULL) {                              \
+            return MFL_ERR_ARGUMENT;                                      \
+        }                                                                 \
+        error_clear((h)->S);                                              \
+    } while (0)
+
+#define H1_CONFIGURABLE(h)                                                                    \
+    do {                                                                                      \
+        if ((h)->state_owned) {                                                               \
+            return fail((h)->S, MFL_ERR_ARGUMENT,                                             \
+                        "this simulation belongs to the state (mfl_state_heat1d): read its "  \
+                        "results; configure a new one with mfl_heat1d_new()");                \
+        }                                                                                     \
+    } while (0)
+
+MflStatus mfl_heat1d_set(MflHeat1D *h, const char *parameter, double value, const char *unit)
+{
+    static const struct {
+        const char *name;
+        MflH1Param  p;
+        int         m, kg, s, k;
+    } table[] = {{"length", MFL_H1_P_LENGTH, 1, 0, 0, 0},
+                 {"conductivity", MFL_H1_P_CONDUCTIVITY, 1, 1, -3, -1},
+                 {"density", MFL_H1_P_DENSITY, -3, 1, 0, 0},
+                 {"specific_heat", MFL_H1_P_SPECIFIC_HEAT, 2, 0, -2, -1},
+                 {"time_step", MFL_H1_P_TIME_STEP, 0, 0, 1, 0},
+                 {"end_time", MFL_H1_P_END_TIME, 0, 0, 1, 0}};
+    char given[MFL_H1_GIVEN];
+    char msg[H1_MSG];
+    double si = 0;
+    size_t i;
+    MflStatus st;
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    if (parameter == NULL) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "parameter name is NULL");
+    }
+    for (i = 0; i < sizeof table / sizeof table[0]; i++) {
+        if (strcmp(parameter, table[i].name) == 0) {
+            st = to_si(h->S, parameter, value, unit,
+                       dim3(table[i].m, table[i].kg, table[i].s, table[i].k), 0, &si, given,
+                       sizeof given);
+            if (st != MFL_OK) {
+                return st;
+            }
+            return h1_status(h->S, mfl_h1_set_positive(&h->config, table[i].p, si, given, msg, sizeof msg),
+                             msg, 0);
+        }
+    }
+    return fail(h->S, MFL_ERR_ARGUMENT,
+                "unknown parameter '%.60s' (use length, conductivity, density, specific_heat, "
+                "time_step or end_time)",
+                parameter);
+}
+
+MflStatus mfl_heat1d_set_nodes(MflHeat1D *h, size_t nodes)
+{
+    char msg[H1_MSG];
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    return h1_status(h->S, mfl_h1_set_nodes(&h->config, (double)nodes, msg, sizeof msg), msg, 0);
+}
+
+MflStatus mfl_heat1d_set_sample_every(MflHeat1D *h, size_t steps)
+{
+    char msg[H1_MSG];
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    return h1_status(h->S, mfl_h1_set_sample_every(&h->config, (double)steps, msg, sizeof msg), msg, 0);
+}
+
+MflStatus mfl_heat1d_set_initial_temperature(MflHeat1D *h, double temperature, const char *unit)
+{
+    char given[MFL_H1_GIVEN];
+    char msg[H1_MSG];
+    double k = 0;
+    MflStatus st;
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    st = to_si(h->S, "the initial temperature", temperature, unit, dim3(0, 0, 0, 1), 1, &k, given,
+               sizeof given);
+    if (st != MFL_OK) {
+        return st;
+    }
+    return h1_status(h->S, mfl_h1_set_initial_uniform(&h->config, k, given, msg, sizeof msg), msg, 0);
+}
+
+MflStatus mfl_heat1d_set_initial_profile(MflHeat1D *h, const double *temperatures, size_t count,
+                                         const char *unit)
+{
+    char msg[H1_MSG];
+    double *k;
+    size_t i;
+    MflStatus st;
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    if (temperatures == NULL) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "the initial profile is NULL");
+    }
+    if (count > MFL_H1_MAX_NODES) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "the initial profile has %lu values, above the limit "
+                                            "of %u nodes", (unsigned long)count, MFL_H1_MAX_NODES);
+    }
+    k = (double *)malloc((count ? count : 1) * sizeof *k);
+    if (k == NULL) {
+        return fail(h->S, MFL_ERR_MEMORY, "out of memory");
+    }
+    for (i = 0; i < count; i++) {
+        st = to_si(h->S, "the initial profile", temperatures[i], unit, dim3(0, 0, 0, 1), 1, &k[i],
+                   NULL, 0);
+        if (st != MFL_OK) {
+            free(k);
+            return st;
+        }
+    }
+    st = h1_status(h->S, mfl_h1_set_initial_profile(&h->config, k, count, msg, sizeof msg), msg, 0);
+    free(k);
+    return st;
+}
+
+static MflStatus check_side(MflHeat1D *h, MflSide side)
+{
+    if (side != MFL_SIDE_LEFT && side != MFL_SIDE_RIGHT) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "invalid side %d (use MFL_SIDE_LEFT or MFL_SIDE_RIGHT)",
+                    (int)side);
+    }
+    return MFL_OK;
+}
+
+MflStatus mfl_heat1d_set_boundary_temperature(MflHeat1D *h, MflSide side, double temperature,
+                                              const char *unit)
+{
+    char given[MFL_H1_GIVEN];
+    char msg[H1_MSG];
+    double k = 0;
+    MflStatus st;
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    if ((st = check_side(h, side)) != MFL_OK) {
+        return st;
+    }
+    st = to_si(h->S, side == MFL_SIDE_LEFT ? "the left boundary temperature"
+                                           : "the right boundary temperature",
+               temperature, unit, dim3(0, 0, 0, 1), 1, &k, given, sizeof given);
+    if (st != MFL_OK) {
+        return st;
+    }
+    return h1_status(h->S, mfl_h1_set_boundary(&h->config, (MflH1Side)side, MFL_H1_BC_TEMPERATURE, k,
+                                               given, msg, sizeof msg),
+                     msg, 0);
+}
+
+MflStatus mfl_heat1d_set_boundary_insulated(MflHeat1D *h, MflSide side)
+{
+    char msg[H1_MSG];
+    MflStatus st;
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    if ((st = check_side(h, side)) != MFL_OK) {
+        return st;
+    }
+    return h1_status(h->S, mfl_h1_set_boundary(&h->config, (MflH1Side)side, MFL_H1_BC_INSULATED, 0,
+                                               NULL, msg, sizeof msg),
+                     msg, 0);
+}
+
+MflStatus mfl_heat1d_max_time_step(MflHeat1D *h, const char *unit, double *out)
+{
+    char msg[H1_MSG];
+    double dt = 0;
+    MflStatus st;
+    H1_BEGIN(h);
+    if (out == NULL) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "output pointer is NULL");
+    }
+    st = h1_status(h->S, mfl_h1_max_time_step(h->state_owned ? &h->result.config : &h->config, &dt,
+                                              msg, sizeof msg),
+                   msg, 1);
+    if (st != MFL_OK) {
+        return st;
+    }
+    return from_si(h->S, "max_time_step", dt, unit, dim3(0, 0, 1, 0), out);
+}
+
+MflStatus mfl_heat1d_run(MflHeat1D *h)
+{
+    MflH1Result res;
+    char msg[H1_MSG];
+    MflH1Status st;
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    h->config.memory_limit = h->S->cfg.memory_limit;
+    st = mfl_h1_run(&h->config, &res, msg, sizeof msg);
+    if (st != MFL_H1_OK) {
+        return h1_status(h->S, st, msg, 1); /* previous results are kept */
+    }
+    mfl_h1_result_free(&h->result);
+    h->result = res;
+    return MFL_OK;
+}
+
+size_t mfl_heat1d_sample_count(const MflHeat1D *h)
+{
+    return h != NULL && h->result.T != NULL ? h->result.samples : 0;
+}
+
+size_t mfl_heat1d_node_count(const MflHeat1D *h)
+{
+    return h != NULL && h->result.T != NULL ? h->result.nodes : 0;
+}
+
+static MflStatus need_results(const MflHeat1D *h)
+{
+    if (h->result.T == NULL) {
+        return fail(h->S, MFL_ERR_NOT_RUN, "the simulation has not run successfully yet "
+                                           "(call mfl_heat1d_run)");
+    }
+    return MFL_OK;
+}
+
+static MflStatus check_index(const MflHeat1D *h, const char *what, size_t i, size_t n)
+{
+    if (i >= n) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "%s %lu does not exist (valid: 0 to %lu)", what,
+                    (unsigned long)i, (unsigned long)(n - 1));
+    }
+    return MFL_OK;
+}
+
+#define H1_READ(h, out)                                                                   \
+    do {                                                                                  \
+        MflStatus st_;                                                                    \
+        H1_BEGIN(h);                                                                      \
+        if ((out) == NULL) {                                                              \
+            return fail((h)->S, MFL_ERR_ARGUMENT, "output pointer is NULL");              \
+        }                                                                                 \
+        if ((st_ = need_results(h)) != MFL_OK) {                                          \
+            return st_;                                                                   \
+        }                                                                                 \
+    } while (0)
+
+MflStatus mfl_heat1d_time(const MflHeat1D *h, size_t sample, const char *unit, double *out)
+{
+    MflStatus st;
+    H1_READ(h, out);
+    if ((st = check_index(h, "sample", sample, h->result.samples)) != MFL_OK) {
+        return st;
+    }
+    return from_si(h->S, "time", h->result.times[sample], unit, dim3(0, 0, 1, 0), out);
+}
+
+MflStatus mfl_heat1d_position(const MflHeat1D *h, size_t node, const char *unit, double *out)
+{
+    MflStatus st;
+    H1_READ(h, out);
+    if ((st = check_index(h, "node", node, h->result.nodes)) != MFL_OK) {
+        return st;
+    }
+    return from_si(h->S, "position", h->result.positions[node], unit, dim3(1, 0, 0, 0), out);
+}
+
+MflStatus mfl_heat1d_temperature(const MflHeat1D *h, size_t sample, size_t node, const char *unit,
+                                 double *out)
+{
+    MflStatus st;
+    H1_READ(h, out);
+    if ((st = check_index(h, "sample", sample, h->result.samples)) != MFL_OK ||
+        (st = check_index(h, "node", node, h->result.nodes)) != MFL_OK) {
+        return st;
+    }
+    return from_si(h->S, "temperature", h->result.T[sample * h->result.nodes + node], unit,
+                   dim3(0, 0, 0, 1), out);
+}
+
+const double *mfl_heat1d_profile(const MflHeat1D *h, size_t sample)
+{
+    if (h == NULL || h->result.T == NULL || sample >= h->result.samples) {
+        return NULL;
+    }
+    return h->result.T + sample * h->result.nodes;
+}
+
+MflStatus mfl_heat1d_first_time_reaching(const MflHeat1D *h, size_t node, double temperature,
+                                         const char *unit, const char *time_unit, double *time,
+                                         int *reached)
+{
+    double k = 0;
+    size_t s = 0;
+    MflStatus st;
+    H1_READ(h, time);
+    if (reached == NULL) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "output pointer is NULL");
+    }
+    if ((st = check_index(h, "node", node, h->result.nodes)) != MFL_OK) {
+        return st;
+    }
+    st = to_si(h->S, "the threshold temperature", temperature, unit, dim3(0, 0, 0, 1), 1, &k, NULL, 0);
+    if (st != MFL_OK) {
+        return st;
+    }
+    *reached = mfl_h1_first_sample_reaching(&h->result, node, k, &s);
+    if (!*reached) {
+        return MFL_OK;
+    }
+    return from_si(h->S, "time", h->result.times[s], time_unit, dim3(0, 0, 1, 0), time);
+}
+
+MflStatus mfl_heat1d_export(const MflHeat1D *h, const char *csv_path, const char *metadata_path)
+{
+    MflH1Provenance prov;
+    char msg[2400];
+    MflStatus st;
+    H1_BEGIN(h);
+    if (csv_path == NULL || metadata_path == NULL) {
+        return fail(h->S, MFL_ERR_ARGUMENT, "file name is NULL");
+    }
+    if ((st = need_results(h)) != MFL_OK) {
+        return st;
+    }
+    prov.mfl_version = MFL_VERSION_STRING;
+    prov.files = (const char *const *)h->sources;
+    prov.hashes = h->hashes;
+    prov.file_count = h->source_count;
+    if (!mfl_h1_export(&h->result, csv_path, metadata_path, &prov, NULL, msg, sizeof msg)) {
+        return fail(h->S, MFL_ERR_IO, "export failed: %s; no metadata file was written, so the "
+                                      "export is incomplete", msg);
+    }
+    return MFL_OK;
 }
