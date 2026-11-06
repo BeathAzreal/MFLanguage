@@ -89,3 +89,39 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
 - **Data:** 2026-11-05 · **Status:** Aceita
 - **Decisão:** o programa de *heat input* com saída exata `480 J/mm` é o
   critério mínimo para lançar a v0.1.
+
+## ADR-010 — Quebras de linha como separadores, decididas no lexer
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Contexto:** a especificação usa quebra de linha como separador de
+  comandos, mas permite continuar uma expressão dentro de `()`/`[]` ou
+  depois de um operador.
+- **Alternativas:** exigir `;` em todo comando; deixar todas as quebras
+  para o parser decidir.
+- **Decisão:** o lexer emite um único token `NEWLINE` por sequência de
+  quebras e o suprime dentro de `()`/`[]`, depois de operadores e no início
+  do arquivo. Uma linha que **começa** com operador não continua a anterior.
+- **Justificativa:** a sintaxe fica próxima da notação de engenharia, sem
+  `;`, e o parser fica mais simples. A regra é a mesma de linguagens como Go
+  e Python (dentro de parênteses).
+
+## ADR-011 — O lexer não converte números nem strings
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** o lexer valida apenas o formato dos literais e devolve o
+  trecho exato do código. A conversão para `double` fica para uma etapa
+  posterior.
+- **Justificativa:** `strtod` depende do *locale* do programa hospedeiro
+  (um jogo configurado para pt-BR usaria `,` como separador decimal), o
+  que quebraria resultados científicos. A conversão será feita por uma
+  rotina própria, independente de *locale* e com arredondamento correto.
+
+## ADR-012 — Identificadores ASCII e posições em pontos de código
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** na v0.1, identificadores são ASCII; caracteres Unicode são
+  aceitos só em strings e comentários. As colunas contam pontos de código
+  Unicode, não bytes.
+- **Consequências:** unidades como `µm` e `Ω` precisam ser escritas como
+  `um` e `ohm` por enquanto. As mensagens de erro apontam a coluna que o
+  usuário vê no editor.

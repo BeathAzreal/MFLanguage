@@ -20,6 +20,8 @@ na IC ou no TCC.
 | 2026-11-05 | Estrutura do repositório, CMake, CI | Gerou arquivos, executou build e testes, fez commits e push | Definiu requisitos, arquitetura e escopo; criou o repositório no GitHub | Pendente: revisar o conteúdo dos arquivos |
 | 2026-11-05 | Documentação inicial (`README.md`, `docs/*.md`) | Redigiu os textos a partir dos requisitos do autor | Definiu objetivos, domínio (soldagem) e o exemplo `480 J/mm` | Pendente: revisar conteúdo técnico e referências |
 | 2026-11-05 | Documentação de pesquisa (`research/`) | Redigiu estrutura e textos | Solicitou e vai manter os registros | Pendente |
+| 2026-11-06 | Correções no CMake (PR #1) | Implementou, testou e verificou no CI, incluindo o teste do `/WX` | Definiu os requisitos, apagou os branches temporários, autorizou o merge | CI verificado; revisão do código pendente |
+| 2026-11-06 | Analisador léxico (`src/lexer/`, testes, `mfl --tokens`) | Implementou o código e os testes, verificou com sanitizers e CI | Solicitou a etapa | Testes automatizados; revisão do código pendente |
 
 ## Boas práticas adotadas
 
