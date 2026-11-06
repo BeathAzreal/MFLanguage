@@ -1,0 +1,7 @@
+# Each file is loaded once (constants.mfl is imported three times) and
+# runs before the files that import it.
+import "lib/steel.mfl"
+import "lib/geometry.mfl"
+import numerical
+print(diffusivity(k_steel, rho_steel, cp_steel))
+print(room, mesh, numerical.mean(mesh))

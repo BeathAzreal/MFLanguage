@@ -1,0 +1,1 @@
+tests/language/heat/no_run.mfl:2:7: runtime error: heat.final_profile: no simulation has run yet (call heat.run() first)

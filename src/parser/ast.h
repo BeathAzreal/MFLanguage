@@ -76,7 +76,9 @@ typedef enum {
     MFL_REF_GLOBAL,   /* ref_index: global slot */
     MFL_REF_LOCAL,    /* ref_index: slot in the current function frame */
     MFL_REF_FUNCTION, /* ref_index: function number */
-    MFL_REF_BUILTIN   /* ref_index: MflBuiltin */
+    MFL_REF_BUILTIN,  /* ref_index: MflBuiltin */
+    MFL_REF_NATIVE,   /* callee of a module call (numerical.sum): ref_index: native number (v0.3) */
+    MFL_REF_CONSTANT  /* module constant (math.pi): ref_index: native number (v0.3) */
 } MflRefKind;
 
 typedef enum { MFL_BUILTIN_PRINT, MFL_BUILTIN_LEN, MFL_BUILTIN_PUSH } MflBuiltin;
@@ -155,7 +157,8 @@ typedef enum {
     MFL_STMT_IF,     /* if value body (else else_body)?   else_body: BLOCK or IF */
     MFL_STMT_WHILE,  /* while value body                                       */
     MFL_STMT_FOR,    /* for name in value (.. range_end)? body                 */
-    MFL_STMT_BLOCK   /* { body }                                               */
+    MFL_STMT_BLOCK,  /* { body }                                               */
+    MFL_STMT_IMPORT  /* import name | import "path.mfl"              (v0.3)    */
 } MflStmtKind;
 
 typedef struct MflParam MflParam;
@@ -172,8 +175,11 @@ struct MflStmt {
     MflStmtKind  kind;
     int          line;
     int          column;
+    int          file;       /* top-level statements: index in the program's file table (v0.3) */
     MflStmt     *next;
-    MflText      name;       /* LET, VAR, FN, FOR (loop variable) */
+    MflText      name;       /* LET, VAR, FN, FOR (loop variable); IMPORT: module name, or the
+                                path string with its quotes */
+    int          import_path; /* IMPORT: 1 for import "path.mfl", 0 for import name */
     MflTypeExpr *annotation; /* LET, VAR */
     MflExpr     *target;     /* ASSIGN */
     MflExpr     *value;      /* LET VAR ASSIGN EXPR RETURN(may be NULL); IF/WHILE condition; FOR iterable or range start */
@@ -197,6 +203,14 @@ typedef struct {
     MflStmt *first; /* linked through ->next */
     int      count;
     int      main_frame_size; /* set by the checker: local slots of top-level blocks */
+
+    /* Programs made of several files (v0.3, see compiler/loader.h). A
+     * program from mfl_parse() alone has file_count 0, which means one file
+     * (index 0) that sees everything. */
+    int                  file_count;
+    const char *const   *file_names; /* file_count names, as shown in messages */
+    const unsigned char *visible;    /* file_count * file_count: visible[a * file_count + b]
+                                        is 1 when file a may use the names of file b */
 } MflProgram;
 
 /* Output sink for the printer. */

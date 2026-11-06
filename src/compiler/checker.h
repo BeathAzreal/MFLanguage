@@ -48,6 +48,7 @@ struct MflFnSig {
     int      ret_annotated;
     int      line;
     int      column;
+    int      file;         /* declaring file (v0.3) */
     MflStmt *decl;
 };
 
@@ -58,6 +59,7 @@ struct MflSymbol {
     int        line;   /* declaration position */
     int        column;
     int        is_var; /* declared with 'var' (mutable) */
+    int        file;   /* declaring file (v0.3); -1 for host inputs */
     MflType    type;
     MflSymbol *next;   /* declaration order */
 };
@@ -101,6 +103,11 @@ int mfl_check_with_inputs(MflProgram *program, const MflCheckInput *inputs, size
  * sets the exact scale and dimension and returns 1; otherwise writes the
  * error into msg and returns 0. */
 int mfl_check_unit(MflExpr *unit, MflScale *scale, MflDim *dim, char *msg, size_t msg_size);
+
+/* Same, but accepts degC (affine = 1: an absolute temperature on the
+ * Celsius scale). Used where the API expects absolute temperatures (v0.3). */
+int mfl_check_unit_ex(MflExpr *unit, MflScale *scale, MflDim *dim, int *affine, char *msg,
+                      size_t msg_size);
 
 void mfl_check_free(MflCheckResult *result);
 

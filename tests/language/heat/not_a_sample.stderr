@@ -1,0 +1,1 @@
+tests/language/heat/not_a_sample.mfl:11:7: runtime error: heat.temperature: t = 3 s is not a sample time (samples every 5 steps from 0 s, and the final time 10 s; see heat.times())

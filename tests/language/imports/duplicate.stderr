@@ -1,0 +1,1 @@
+tests/language/imports/duplicate.mfl:2:1: error: 'room' is already declared at tests/language/imports/lib/sub/constants.mfl:1:1

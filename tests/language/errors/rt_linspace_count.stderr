@@ -1,0 +1,1 @@
+tests/language/errors/rt_linspace_count.mfl:2:23: runtime error: argument 3 of 'numerical.linspace' ('count') must be a whole number >= 2, found 1

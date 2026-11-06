@@ -1,0 +1,2 @@
+import "cycle_b.mfl"
+let a = 1

@@ -1,0 +1,1 @@
+tests/language/heat/difference_at_runtime.mfl:4:17: runtime error: argument 1 of 'heat.left_temperature' ('temperature') must be an absolute temperature (K or degC), found the temperature difference 480 delta_degC

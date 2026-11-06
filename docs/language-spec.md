@@ -1,7 +1,7 @@
-# MFL Language Specification — v0.2
+# MFL Language Specification — v0.3
 
 > **Status:** sections marked **Implemented** describe the behaviour of the
-> current interpreter (v0.2, pre-alpha) and are covered by tests in
+> current interpreter (v0.3, pre-alpha) and are covered by tests in
 > `tests/`. Syntax and semantics may still change before v1.0. Sections
 > marked *(open question)* are explicitly undecided.
 
@@ -490,6 +490,100 @@ interpass 150 degC is 100 delta_degC below the limit 250 degC
 - `break` / `continue`; nested functions and closures.
 - Should integer types exist, or only binary64? (Only binary64 so far;
   indices are whole binary64 numbers.)
-- Module syntax: `import welding` vs. `use welding.*`.
+- ~~Module syntax: `import welding` vs. `use welding.*`~~ — resolved in
+  v0.3 (§13): `import name` for C modules, `import "file.mfl"` for files.
+- Private names in imported files; qualified access to file imports
+  (`import "steel.mfl" as steel`); modules written in MFL and imported by
+  name.
 - Vector/matrix types with element-wise units (beyond homogeneous arrays).
 - A garbage collector for arrays (they live until the end of a run).
+
+## 13. Modules and imports
+
+> **Implemented** (v0.3). Loader: `src/compiler/loader.c`; module
+> functions: `src/modules/natives.c` (binding) and `modules/numerical/`
+> (numerics). Tests: `tests/language/imports/`,
+> `tests/language/conformance_modules.mfl`, `tests/language/errors/*modules*`.
+
+```mfl
+import numerical               # a module implemented in C, used as numerical.sum(...)
+import "materials/steel.mfl"   # another MFL file: its top-level names become visible
+```
+
+### 13.1 Where imports may appear
+
+`import` statements come **first** in a file: only comments, blank lines
+and other imports may precede them. They are not allowed inside blocks or
+functions. Both rules are syntax errors.
+
+### 13.2 Module imports: `import name`
+
+| Module | Members |
+|--------|---------|
+| `math` | `sin(x)`, `cos(x)`, `exp(x)`, `log(x)` — `x` dimensionless; `sqrt(x)` — any quantity whose dimension has even exponents, the result has half the exponents (`math.sqrt(16 m^2)` is `4 m`); constant `math.pi` |
+| `numerical` | `linspace(start, stop, count)`, `sum(values)`, `mean(values)` (§13.4) |
+| `heat` | 1D transient heat conduction (`docs/heat-conduction.md`) |
+
+- Members are always written qualified: `numerical.sum(v)`. The module
+  name is visible **only in the file that imports it**; using it elsewhere
+  is the error `module 'numerical' is not imported; add 'import numerical'
+  at the top of the file`.
+- A module name cannot be used as a value, redeclared in that file, or
+  imported twice. An unknown module or member is an error that lists the
+  available names.
+- Calls are checked like calls of annotated functions: before running when
+  the argument types are known, when they run otherwise (§4.1), with
+  messages such as `argument 2 of 'numerical.linspace' ('stop') must be
+  Quantity[m] (like argument 1), found Quantity[s]`.
+
+### 13.3 File imports: `import "path.mfl"`
+
+**Path resolution.** The path is relative to the **directory of the file
+that contains the import** (not to the current directory), uses `/` as the
+separator on every platform and must end in `.mfl`. Absolute paths,
+backslashes, `//` and directory names are rejected. `..` is allowed. Paths
+are normalised lexically (`lib/./sub/../steel.mfl` is `lib/steel.mfl`;
+symbolic links are not resolved), and the normalised path identifies the
+file.
+
+**Loading and execution.** Every file is loaded **once**, however many
+files import it. Before any code runs, the files are joined into one
+program in dependency order (depth-first, in the order of the import
+statements): a file's top-level code runs after the code of everything it
+imports, and the main file runs last. Functions are hoisted across files.
+
+**Visibility.** A file may use the top-level names (`let`, `var`, `fn`) of
+the files it imports, **directly or through other imports** (imports are
+transitive), and never the names of files that import it:
+`'main_only' is declared in main.mfl, which this file does not import`.
+All top-level names of a program share one namespace, so a name may be
+declared only once across all its files
+(`'room' is already declared at lib/sub/constants.mfl:1:1`). A `var` can
+be assigned only by code in the file that declares it. Module imports
+(§13.2) are per file and are not transitive.
+
+**Errors.** Reported at the import statement as `file:line:col: error:`:
+
+| Situation | Message |
+|-----------|---------|
+| missing or unreadable file | `cannot read the imported file "lib/x.mfl" (looked for 'examples/lib/x.mfl')` |
+| cycle (a file imports itself, directly or not) | `import cycle: a.mfl -> b.mfl -> a.mfl (...)` |
+| invalid path | `invalid import path "lib": the file name must end in .mfl` |
+| more than 64 files, more than 32 nested imports | `too many imported files (limit 64)` |
+| embedding API with file imports disabled | `cannot import "...": file imports are not enabled here ...` (`mfl_set_file_imports`) |
+
+Errors and run-time errors inside an imported file name that file:
+`lib/fails.mfl:1:33: runtime error: cannot add Quantity[m] and Quantity[s]`.
+
+### 13.4 Numerical operations
+
+| Function | Result | Rules |
+|----------|--------|-------|
+| `numerical.linspace(start, stop, count)` | `Array` of `count` values of the type of `start` | `stop` must have the same type (dimension and absolute flag) as `start`; `count` a whole number ≥ 2 (at most 10⁷). Values are in the unit of `start`; the first is exactly `start` and the last exactly `stop` converted to that unit; `x_i = start + (stop − start)·i/(count − 1)`. |
+| `numerical.sum(values)` | element type | Neumaier compensated summation. If all elements have the same unit, the result keeps it (`[1 mm, 2 mm]` → `3 mm`); otherwise it is in coherent SI (`[1 m, 2 mm]` → `1.002 m`). Absolute temperatures (degC) cannot be added. |
+| `numerical.mean(values)` | element type | `sum / len`, same unit rule. Absolute temperatures are allowed (`mean([20 degC, 30 degC])` is `25 degC`). |
+
+**Empty arrays:** `sum` and `mean` of an empty array are run-time errors
+(`numerical.sum of an empty array is not defined (its unit and dimension
+are unknown)`): an empty array carries no dimension at run time, so there
+is no correctly-typed zero to return. Test `len(values) > 0` first.

@@ -439,8 +439,323 @@ static void test_status_names(void)
     CHECK(strcmp(mfl_version(), MFL_VERSION_STRING) == 0);
 }
 
-int main(void)
+static const char *g_source_dir = ".";
+
+/* v0.3: imports through the API. File imports are off by default. */
+static void test_imports(void)
 {
+    Capture cap;
+    MflState *S = new_capturing(&cap, 0);
+    char name[1024];
+    const char *uses_lib = "import \"lib/steel.mfl\"\n"
+                           "let alpha = diffusivity(k_steel, rho_steel, cp_steel)\n";
+    const char *modules = "import numerical\nlet m = numerical.mean([1 mm, 3 mm])\n"
+                          "let T = 20 degC\n";
+    double v = 0;
+
+    snprintf(name, sizeof name, "%s/tests/language/imports/api_main.mfl", g_source_dir);
+    CHECK_STATUS(mfl_eval(S, uses_lib, strlen(uses_lib), name), MFL_ERR_PROGRAM);
+    CHECK(strstr(mfl_error_message(S), "file imports are not enabled") != NULL);
+    CHECK(strstr(mfl_error_message(S), "api_main.mfl:1:1: error:") != NULL);
+
+    mfl_set_file_imports(S, 1);
+    CHECK_STATUS(mfl_eval(S, uses_lib, strlen(uses_lib), name), MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "alpha", "mm^2/s", &v), MFL_OK);
+    CHECK(fabs(v - 63.9 / (7832.0 * 434.0) * 1e6) < 1e-12);
+    CHECK(strstr(cap.text, "steel.mfl loaded") != NULL);
+    /* names of imported files are results too */
+    CHECK_STATUS(mfl_get_number(S, "k_steel", "W/(m*K)", &v), MFL_OK);
+    CHECK(v == 63.9);
+
+    /* errors in an imported file name that file */
+    {
+        const char *bad = "import \"lib/fails.mfl\"\nlet x = checked_add(1 m, 1 s)\n";
+        CHECK_STATUS(mfl_eval(S, bad, strlen(bad), name), MFL_ERR_RUNTIME);
+        CHECK(strstr(mfl_error_message(S), "lib/fails.mfl:1:33: runtime error: cannot add") != NULL);
+    }
+    {
+        const char *missing = "import \"lib/none.mfl\"\n";
+        CHECK_STATUS(mfl_eval(S, missing, strlen(missing), name), MFL_ERR_PROGRAM);
+        CHECK(strstr(mfl_error_message(S), "cannot read the imported file") != NULL);
+    }
+
+    /* module imports are always available; degC results read back in K */
+    mfl_set_file_imports(S, 0);
+    CHECK_STATUS(mfl_eval(S, modules, strlen(modules), "modules.mfl"), MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "m", "mm", &v), MFL_OK);
+    CHECK(v == 2.0);
+    CHECK_STATUS(mfl_get_number(S, "T", "K", &v), MFL_OK);
+    CHECK(fabs(v - 293.15) < 1e-12);
+    mfl_state_free(S);
+}
+
+/* ------------------------------------------------------------------------ */
+/* v0.3: 1D heat conduction through the API                                  */
+/* ------------------------------------------------------------------------ */
+
+static void configure_bar(MflHeat1D *h, double length, const char *lunit, double T0,
+                          const char *tunit)
+{
+    CHECK_STATUS(mfl_heat1d_set(h, "length", length, lunit), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "conductivity", 45, "W/(m*K)"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "density", 7850, "kg/m^3"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "specific_heat", 460, "J/(kg*K)"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_nodes(h, 11), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_initial_temperature(h, T0, tunit), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_boundary_temperature(h, MFL_SIDE_LEFT, 500, "degC"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_boundary_insulated(h, MFL_SIDE_RIGHT), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "time_step", 1, "s"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "end_time", 1, "min"), MFL_OK);
+}
+
+static void test_heat_api(void)
+{
+    MflState *S = mfl_state_new(NULL);
+    MflHeat1D *a = mfl_heat1d_new(S);
+    MflHeat1D *b = mfl_heat1d_new(S);
+    double v = 0;
+    int reached = -1;
+    size_t j;
+
+    CHECK(a != NULL && b != NULL);
+    CHECK(mfl_heat1d_new(NULL) == NULL);
+
+    /* Equivalent units give bit-identical results: 100 mm / 0.1 m and
+     * 20 degC / 293.15 K. */
+    configure_bar(a, 100, "mm", 20, "degC");
+    configure_bar(b, 0.1, "m", 293.15, "K");
+    CHECK_STATUS(mfl_heat1d_run(a), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_run(b), MFL_OK);
+    CHECK(mfl_heat1d_sample_count(a) == 61 && mfl_heat1d_node_count(a) == 11);
+    for (j = 0; j < 11; j++) {
+        CHECK(mfl_heat1d_profile(a, 60)[j] == mfl_heat1d_profile(b, 60)[j]);
+    }
+    CHECK_STATUS(mfl_heat1d_temperature(a, 0, 5, "degC", &v), MFL_OK);
+    CHECK(fabs(v - 20) < 1e-12);
+    CHECK_STATUS(mfl_heat1d_temperature(a, 0, 0, "K", &v), MFL_OK);
+    CHECK(v == 773.15); /* prescribed end replaces the initial value at t = 0 */
+    CHECK_STATUS(mfl_heat1d_time(a, 60, "min", &v), MFL_OK);
+    CHECK(v == 1);
+    CHECK_STATUS(mfl_heat1d_position(a, 10, "mm", &v), MFL_OK);
+    CHECK(v == 100);
+    CHECK_STATUS(mfl_heat1d_max_time_step(a, "ms", &v), MFL_OK);
+    CHECK(fabs(v - 0.01 * 0.01 / (2 * 45.0 / (7850 * 460.0)) * 1000) < 1e-9);
+    CHECK_STATUS(mfl_heat1d_first_time_reaching(a, 1, 100, "degC", "s", &v, &reached), MFL_OK);
+    CHECK(reached == 1 && v > 0 && v < 60);
+    CHECK_STATUS(mfl_heat1d_first_time_reaching(a, 10, 1000, "K", "s", &v, &reached), MFL_OK);
+    CHECK(reached == 0); /* threshold outside the simulated range */
+
+    /* Invalid calls: status and a message naming the parameter. */
+    CHECK_STATUS(mfl_heat1d_set(NULL, "length", 1, "m"), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set(a, "lenght", 1, "m"), MFL_ERR_ARGUMENT);
+    CHECK(strstr(mfl_error_message(S), "unknown parameter 'lenght'") != NULL);
+    CHECK_STATUS(mfl_heat1d_set(a, NULL, 1, "m"), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set(a, "conductivity", 45, "W/m"), MFL_ERR_UNIT);
+    CHECK(strstr(mfl_error_message(S), "conductivity: unit 'W/m' has dimension") != NULL);
+    CHECK_STATUS(mfl_heat1d_set(a, "length", 1, NULL), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_set(a, "length", 1, "parsec"), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_set(a, "time_step", NAN, "s"), MFL_ERR_ARGUMENT);
+    CHECK(strstr(mfl_error_message(S), "time_step (time step) must be finite") != NULL);
+    CHECK_STATUS(mfl_heat1d_set(a, "density", -1, "kg/m^3"), MFL_ERR_ARGUMENT);
+    CHECK(strstr(mfl_error_message(S), "density (density rho) must be positive, found -1 kg/m^3") != NULL);
+    CHECK_STATUS(mfl_heat1d_set(a, "end_time", INFINITY, "s"), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set_nodes(a, 2), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set_sample_every(a, 0), MFL_ERR_ARGUMENT);
+    /* a temperature difference where an absolute temperature is expected */
+    CHECK_STATUS(mfl_heat1d_set_initial_temperature(a, 20, "delta_degC"), MFL_ERR_UNIT);
+    CHECK(strstr(mfl_error_message(S), "'delta_degC' is a temperature difference") != NULL);
+    CHECK_STATUS(mfl_heat1d_set_boundary_temperature(a, MFL_SIDE_LEFT, 5, "delta_degC"), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_set_initial_temperature(a, -300, "degC"), MFL_ERR_ARGUMENT);
+    CHECK(strstr(mfl_error_message(S), "above 0 K, found -300 degC") != NULL);
+    CHECK_STATUS(mfl_heat1d_set_initial_temperature(a, 20, "m"), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_set_boundary_insulated(a, (MflSide)7), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set_initial_profile(a, NULL, 3, "K"), MFL_ERR_ARGUMENT);
+    {
+        double prof[3] = {300, NAN, 300};
+        CHECK_STATUS(mfl_heat1d_set_initial_profile(a, prof, 3, "K"), MFL_ERR_ARGUMENT);
+        CHECK(strstr(mfl_error_message(S), "value 2 of the initial profile (node 1) must be finite") != NULL);
+    }
+    CHECK_STATUS(mfl_heat1d_temperature(a, 61, 0, "K", &v), MFL_ERR_ARGUMENT);
+    CHECK(strstr(mfl_error_message(S), "sample 61 does not exist (valid: 0 to 60)") != NULL);
+    CHECK_STATUS(mfl_heat1d_temperature(a, 0, 11, "K", &v), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_temperature(a, 0, 0, "delta_degC", &v), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_temperature(a, 0, 0, "s", &v), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_temperature(a, 0, 0, "K", NULL), MFL_ERR_ARGUMENT);
+    CHECK(mfl_heat1d_profile(a, 61) == NULL && mfl_heat1d_profile(NULL, 0) == NULL);
+    /* none of the failures above changed the configuration or the results */
+    CHECK(mfl_heat1d_profile(a, 60)[3] == mfl_heat1d_profile(b, 60)[3]);
+
+    /* Solver errors reach the host; the same objects recover. */
+    CHECK_STATUS(mfl_heat1d_set(a, "time_step", 5, "s"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_run(a), MFL_ERR_SIMULATION);
+    CHECK(strstr(mfl_error_message(S), "unstable time step: time_step = 5 s") != NULL);
+    CHECK(mfl_heat1d_sample_count(a) == 61); /* previous results kept */
+    CHECK_STATUS(mfl_heat1d_set(a, "time_step", 2, "s"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_run(a), MFL_OK);
+    CHECK(mfl_heat1d_sample_count(a) == 31);
+    CHECK(strcmp(mfl_error_message(S), "") == 0);
+
+    /* Missing parameters, results before running. */
+    {
+        MflHeat1D *c = mfl_heat1d_new(S);
+        CHECK_STATUS(mfl_heat1d_run(c), MFL_ERR_SIMULATION);
+        CHECK(strstr(mfl_error_message(S), "missing parameter 'length'") != NULL);
+        CHECK(mfl_heat1d_sample_count(c) == 0 && mfl_heat1d_profile(c, 0) == NULL);
+        CHECK_STATUS(mfl_heat1d_time(c, 0, "s", &v), MFL_ERR_NOT_RUN);
+        CHECK_STATUS(mfl_heat1d_export(c, "x.csv", "x.json"), MFL_ERR_NOT_RUN);
+        CHECK_STATUS(mfl_heat1d_max_time_step(c, "s", &v), MFL_ERR_SIMULATION);
+        mfl_heat1d_free(c);
+    }
+    mfl_heat1d_free(a);
+    mfl_heat1d_free(b);
+    mfl_heat1d_free(NULL);
+
+    /* The state stays usable for scripts afterwards. */
+    CHECK_STATUS(mfl_eval(S, "let q = 2 m", 11, "after.mfl"), MFL_OK);
+    mfl_state_free(S);
+}
+
+/* Simulations run by scripts are readable through the state. */
+static void test_heat_from_script(void)
+{
+    Capture cap;
+    MflState *S = new_capturing(&cap, 0);
+    const char *src = "import heat\n"
+                      "heat.bar(0.1 m, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))\n"
+                      "heat.nodes(11)\n"
+                      "heat.initial_temperature(20 degC)\n"
+                      "heat.left_temperature(500 degC)\n"
+                      "heat.right_insulated()\n"
+                      "heat.time_step(1 s)\n"
+                      "heat.end_time(T_end)\n"
+                      "heat.run()\n"
+                      "let T_center = heat.final_profile()[5]\n";
+    const char *unstable = "import heat\n"
+                           "heat.bar(0.1 m, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))\n"
+                           "heat.nodes(11)\n"
+                           "heat.initial_temperature(20 degC)\n"
+                           "heat.left_insulated()\nheat.right_insulated()\n"
+                           "heat.time_step(10 s)\nheat.end_time(1 min)\nheat.run()\n";
+    const MflHeat1D *h;
+    double v = 0;
+    double center = 0;
+    MflHeat1D *c;
+
+    CHECK(mfl_state_heat1d(S) == NULL);
+    CHECK_STATUS(mfl_set_number(S, "T_end", 30, "s"), MFL_OK);
+    CHECK_STATUS(mfl_eval(S, src, strlen(src), "bar.mfl"), MFL_OK);
+    h = mfl_state_heat1d(S);
+    CHECK(h != NULL && mfl_heat1d_sample_count(h) == 31);
+    CHECK_STATUS(mfl_heat1d_temperature(h, 30, 5, "K", &v), MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "T_center", "K", &center), MFL_OK);
+    CHECK(v == center); /* script value and API value agree */
+    /* state-owned: cannot be reconfigured, freeing it is ignored */
+    CHECK_STATUS(mfl_heat1d_set_nodes((MflHeat1D *)h, 5), MFL_ERR_ARGUMENT);
+    mfl_heat1d_free((MflHeat1D *)h);
+    CHECK(mfl_state_heat1d(S) == h);
+
+    /* A solver error in a script is a run-time error at the call; the
+     * previous results stay, and the next script runs normally. */
+    CHECK_STATUS(mfl_eval(S, unstable, strlen(unstable), "unstable.mfl"), MFL_ERR_RUNTIME);
+    CHECK(strstr(mfl_error_message(S), "unstable.mfl:9:1: runtime error: heat.run: unstable time step") != NULL);
+    CHECK(mfl_state_heat1d(S) == h);
+    CHECK_STATUS(mfl_set_number(S, "T_end", 60, "s"), MFL_OK);
+    CHECK_STATUS(mfl_eval(S, src, strlen(src), "bar.mfl"), MFL_OK);
+    CHECK(mfl_heat1d_sample_count(mfl_state_heat1d(S)) == 61);
+
+    /* The same case from C gives identical numbers. */
+    c = mfl_heat1d_new(S);
+    configure_bar(c, 0.1, "m", 20, "degC");
+    CHECK_STATUS(mfl_heat1d_run(c), MFL_OK);
+    CHECK(mfl_heat1d_profile(c, 60)[5] == mfl_heat1d_profile(mfl_state_heat1d(S), 60)[5]);
+    mfl_heat1d_free(c);
+
+    /* A script without simulations clears it. */
+    CHECK_STATUS(mfl_eval(S, "let z = 1", 9, "z.mfl"), MFL_OK);
+    CHECK(mfl_state_heat1d(S) == NULL);
+    mfl_state_free(S);
+}
+
+/* Memory limits: every limit fails cleanly or succeeds; afterwards the
+ * state runs the case without a limit. */
+static void test_heat_memory(void)
+{
+    const char *src = "import heat\nimport numerical\n"
+                      "heat.bar(0.1 m, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))\n"
+                      "heat.mesh(numerical.linspace(0 m, 0.1 m, 21))\n"
+                      "heat.initial_temperature(300 K)\n"
+                      "heat.left_temperature(400 K)\nheat.right_insulated()\n"
+                      "heat.time_step(0.5 s)\nheat.end_time(100 s)\nheat.run()\n"
+                      "let m = numerical.mean(heat.final_profile())\n";
+    size_t limit;
+    int ok_runs = 0;
+    int mem_failures = 0;
+    for (limit = 64; limit <= 64 * 1024; limit = limit * 5 / 4 + 1) {
+        Capture cap;
+        MflState *S = new_capturing(&cap, limit);
+        MflHeat1D *h = mfl_heat1d_new(S);
+        MflStatus st = mfl_eval(S, src, strlen(src), "mem.mfl");
+        CHECK(st == MFL_OK || st == MFL_ERR_MEMORY);
+        ok_runs += st == MFL_OK;
+        mem_failures += st == MFL_ERR_MEMORY;
+        if (h != NULL) {
+            configure_bar(h, 0.1, "m", 300, "K");
+            CHECK_STATUS(mfl_heat1d_set(h, "end_time", 1000, "s"), MFL_OK);
+            st = mfl_heat1d_run(h);
+            CHECK(st == MFL_OK || st == MFL_ERR_MEMORY);
+            if (st == MFL_ERR_MEMORY) {
+                CHECK(mfl_heat1d_sample_count(h) == 0);
+                /* recover: fewer samples fit */
+                CHECK_STATUS(mfl_heat1d_set_sample_every(h, 1000), MFL_OK);
+                st = mfl_heat1d_run(h);
+                CHECK(st == MFL_OK || st == MFL_ERR_MEMORY);
+            }
+            mfl_heat1d_free(h);
+        }
+        mfl_state_free(S);
+    }
+    CHECK(ok_runs > 0 && mem_failures > 0);
+}
+
+static void test_heat_export_api(void)
+{
+    MflState *S = mfl_state_new(NULL);
+    MflHeat1D *h = mfl_heat1d_new(S);
+    char csv[1024];
+    char json[1024];
+    FILE *f;
+    configure_bar(h, 0.1, "m", 300, "K");
+    CHECK_STATUS(mfl_heat1d_run(h), MFL_OK);
+    snprintf(csv, sizeof csv, "%s", "api_export.csv");
+    snprintf(json, sizeof json, "%s", "api_export.json");
+    CHECK_STATUS(mfl_heat1d_export(h, csv, json), MFL_OK);
+    f = fopen(json, "rb");
+    CHECK(f != NULL);
+    if (f != NULL) {
+        char buf[4096];
+        size_t n = fread(buf, 1, sizeof buf - 1, f);
+        buf[n] = '\0';
+        fclose(f);
+        CHECK(strstr(buf, "\"rows\": 671") != NULL); /* 61 samples x 11 nodes */
+        CHECK(strstr(buf, "\"export_complete\": true") != NULL);
+    }
+    remove(csv);
+    remove(json);
+    CHECK_STATUS(mfl_heat1d_export(h, "no/such/dir/x.csv", "no/such/dir/x.json"), MFL_ERR_IO);
+    CHECK(strstr(mfl_error_message(S), "no metadata file was written") != NULL);
+    CHECK_STATUS(mfl_heat1d_export(h, NULL, json), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_export(h, csv, csv), MFL_ERR_IO);
+    CHECK(strcmp(mfl_status_name(MFL_ERR_SIMULATION), "MFL_ERR_SIMULATION") == 0);
+    CHECK(strcmp(mfl_status_name(MFL_ERR_IO), "MFL_ERR_IO") == 0);
+    mfl_heat1d_free(h);
+    mfl_state_free(S);
+}
+
+int main(int argc, char **argv)
+{
+    if (argc > 1) {
+        g_source_dir = argv[1];
+    }
     test_heat_input();
     test_inputs();
     test_bad_arguments();
@@ -453,6 +768,11 @@ int main(void)
     test_runtime_errors();
     test_v02_programs();
     test_status_names();
+    test_imports();
+    test_heat_api();
+    test_heat_from_script();
+    test_heat_memory();
+    test_heat_export_api();
     printf("test_api: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

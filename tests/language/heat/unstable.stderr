@@ -1,0 +1,1 @@
+tests/language/heat/unstable.mfl:11:1: runtime error: heat.run: unstable time step: time_step = 2 s is above the stability limit of the explicit scheme, time_step <= dx^2 / (2 alpha) = 1.0030555555555556 s (Fourier number alpha*dt/dx^2 = 0.9969537524231514 > 1/2; dx = 0.005 m, alpha = 1.2461921905289394e-5 m^2/s). Use a smaller time_step or fewer nodes

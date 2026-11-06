@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "modules/natives.h"
 #include "runtime/number.h"
 #include "runtime/units.h"
 
@@ -48,6 +49,7 @@ typedef struct {
     size_t          limit;
     MflVmError     *err;
     size_t          op_ip; /* start of the current instruction */
+    int             oom;   /* set by mfl_vm_alloc_array() */
 } Vm;
 
 /* ------------------------------------------------------------------------ */
@@ -236,6 +238,7 @@ static MflVmStatus runtime_error(Vm *vm, const char *fmt, ...)
 {
     va_list ap;
     if (vm->err != NULL) {
+        vm->err->file = vm->op_ip < vm->c->code_len && vm->c->files != NULL ? vm->c->files[vm->op_ip] : 0;
         vm->err->line = vm->op_ip < vm->c->code_len ? vm->c->lines[vm->op_ip] : 0;
         vm->err->column = vm->op_ip < vm->c->code_len ? vm->c->columns[vm->op_ip] : 0;
         va_start(ap, fmt);
@@ -297,6 +300,20 @@ static MflArray *new_array(Vm *vm, size_t capacity)
     a->capacity = capacity;
     a->next_alloc = vm->arrays;
     vm->arrays = a;
+    return a;
+}
+
+MflArray *mfl_vm_alloc_array(void *vmp, size_t length)
+{
+    Vm *vm = (Vm *)vmp;
+    MflArray *a;
+    if (length > ((size_t)-1) / sizeof(MflValue) / 2) {
+        return NULL;
+    }
+    a = new_array(vm, length);
+    if (a != NULL) {
+        a->length = length;
+    }
     return a;
 }
 
@@ -388,6 +405,14 @@ static MflVmStatus check_index(Vm *vm, const MflValue *arr, const MflValue *ix, 
 MflVmStatus mfl_vm_execute(const MflChunk *c, const MflValue *init, size_t init_count,
                            MflValue *snapshot, MflWriteFn write, void *ctx,
                            const MflVmLimits *limits, MflVmError *error)
+{
+    return mfl_vm_execute_ex(c, init, init_count, snapshot, write, ctx, limits, NULL, error);
+}
+
+MflVmStatus mfl_vm_execute_ex(const MflChunk *c, const MflValue *init, size_t init_count,
+                              MflValue *snapshot, MflWriteFn write, void *ctx,
+                              const MflVmLimits *limits, struct MflNativeSession *session,
+                              MflVmError *error)
 {
     Vm vm;
     size_t ip = 0;
@@ -1046,6 +1071,34 @@ MflVmStatus mfl_vm_execute(const MflChunk *c, const MflValue *init, size_t init_
                      ta, ctxv->kind == MFL_VAL_STRING ? (int)ctxv->as.string.length : 1,
                      ctxv->kind == MFL_VAL_STRING ? ctxv->as.string.chars : "?", tb);
             }
+            break;
+        }
+
+        case MFL_OP_CALL_NATIVE: {
+            MflNativeEnv env;
+            MflValue result;
+            char message[sizeof error->message];
+            int rc;
+            NEED(b);
+            memset(&env, 0, sizeof env);
+            env.chunk = c;
+            env.vm = &vm;
+            env.session = (MflNativeSession *)session;
+            message[0] = '\0';
+            env.message = message;
+            env.message_size = sizeof message;
+            result = nil_value();
+            rc = mfl_native_call(&env, (int)a, &vm.stack[vm.sp - b], (int)b, &result);
+            if (rc == 2) {
+                status = MFL_VM_OUT_OF_MEMORY;
+                goto done;
+            }
+            if (rc != 0) {
+                FAIL("%s", message);
+            }
+            vm.sp -= b;
+            ROOM();
+            vm.stack[vm.sp++] = result;
             break;
         }
 

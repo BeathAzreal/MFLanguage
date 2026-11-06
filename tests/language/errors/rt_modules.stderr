@@ -1,0 +1,1 @@
+tests/language/errors/rt_modules.mfl:8:7: runtime error: numerical.sum of an empty array is not defined (its unit and dimension are unknown); check len(values) > 0 first

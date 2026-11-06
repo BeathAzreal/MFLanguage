@@ -1,0 +1,6 @@
+# A temperature difference where an absolute temperature is expected,
+# found when the call runs (unannotated parameter).
+import heat
+fn hot_end(T) { heat.left_temperature(T) }
+hot_end(500 degC)
+hot_end(480 delta_degC)

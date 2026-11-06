@@ -70,3 +70,4 @@ Testing/
 .idea/
 *.swp
 .DS_Store
+wasm/dist/

@@ -10,13 +10,13 @@ that students, researchers and engineers can write mathematical models, test
 hypotheses and run reproducible simulations — for undergraduate research
 (IC), final-year projects (TCC), graduate work and industrial applications.
 
-> ⚠️ **Early stage (pre-alpha, v0.2).** The interpreter runs functions,
+> ⚠️ **Early stage (pre-alpha, v0.3).** The interpreter runs functions,
 > control flow, arrays and gradually typed code with physical units,
-> dimensional analysis (before running where possible, while running
-> otherwise), absolute temperatures and unit conversion, and can be
-> embedded in C/C++ programs. The scientific modules (numerical solvers,
-> welding models) are **planned, not implemented**. See
-> [Current status](#current-status).
+> dimensional analysis, absolute temperatures and unit conversion; it has
+> modules (`import`), a `numerical` module and a verified **1D transient
+> heat conduction solver** with CSV/JSON export, usable from MFL, from the
+> `mfl` command and from C. Welding models (moving heat sources, 2D/3D)
+> are **planned, not implemented**. See [Current status](#current-status).
 
 ---
 
@@ -71,6 +71,46 @@ Passing a power where the speed is expected is rejected before running:
 Quantity[mm/s]), found Quantity[kg*m^2/s^3]`. Full example:
 [`examples/welding/heat_input_v02.mfl`](examples/welding/heat_input_v02.mfl).
 
+## v0.3: 1D heat conduction in a bar
+
+```mfl
+import numerical
+import heat
+import "materials/carbon_steel.mfl"           # k_steel, rho_steel, cp_steel
+
+let length = 100 mm
+heat.bar(length, k_steel, rho_steel, cp_steel)
+heat.mesh(numerical.linspace(0 mm, length, 21))
+heat.initial_temperature(20 degC)
+heat.left_temperature(500 degC)               # x = 0 held at 500 degC
+heat.right_insulated()                        # x = L: no heat flux
+heat.time_step(0.5 s)                         # stability limit: 1.003 s
+heat.end_time(10 min)
+heat.sample_every(20)
+heat.run()
+print(heat.first_time_reaching(50 mm, 150 degC))   # 90 s (first sample at or above)
+```
+
+```bash
+./build/mfl examples/thermal/bar_heated_end.mfl --csv out/bar_heated_end.csv
+./build/mfl_heat_host examples/thermal/bar_heated_end.mfl out/bar_heated_end.csv
+```
+
+The first command prints the report and writes the temperature history
+(`time_s,position_m,temperature_K`) and a JSON metadata file (version,
+properties, initial and boundary conditions, discretization, sampling,
+units, source files); the second runs the same case from a C host and
+checks it gives the same numbers. Model, method (explicit finite
+differences, stability `α·Δt/Δx² ≤ 1/2`), units, limits and the
+verification against the analytical solution (observed order 2.00) are in
+[`docs/heat-conduction.md`](docs/heat-conduction.md); a small exported case
+is in [`examples/thermal/output/`](examples/thermal/output/).
+
+> **Scope.** This milestone ends with 1D conduction in a homogeneous bar.
+> The example is the verification of a bar model, **not a welding
+> simulation**: moving heat sources and 2D/3D welding models are reserved
+> for a later milestone.
+
 ## Scientific goals
 
 - Provide a small, auditable language for **mathematical modelling** of
@@ -100,9 +140,12 @@ Quantity[mm/s]), found Quantity[kg*m^2/s^3]`. Full example:
 | Arrays (homogeneous, quantities in any unit of one dimension) | **Implemented** (v0.2) |
 | Gradual typing (optional annotations, run-time checks for the rest) | **Implemented** (v0.2) |
 | Error messages with `file:line:col`, at compile time and run time | **Implemented** |
-| Scientific modules (`math`, `units`, `numerical`, `welding`) independent of the core | Planned |
+| Modules: `import "file.mfl"` and `import math` / `numerical` / `heat` | **Implemented** (v0.3) |
+| `numerical` module: uniform meshes, sum, mean (dimension-checked) | **Implemented** (v0.3) |
+| 1D transient heat conduction (FTCS), CSV/JSON export, CLI and C API | **Implemented** (v0.3) — [`docs/heat-conduction.md`](docs/heat-conduction.md) |
+| `welding` module (moving sources, 2D/3D) | Planned |
 | Embeddable C API for programs and games | **Implemented** — [`docs/embedding.md`](docs/embedding.md) |
-| WebAssembly target | Future |
+| WebAssembly target (runs in the browser, same results as the CLI) | **Implemented** — [`wasm/README.md`](wasm/README.md) |
 | Bindings to C/C++/Fortran scientific libraries | Future |
 
 MFL has **no dependency** on React, JavaScript, Unity, Unreal or any game or
@@ -174,12 +217,14 @@ MFLanguage/
 │   ├── compiler/        Semantic checker, bytecode compiler (implemented)
 │   ├── vm/              Bytecode virtual machine (implemented)
 │   ├── api/             Public embedding API implementation
+│   ├── modules/         Language binding of the C modules (math, numerical, heat)
 │   ├── runtime/         Arena, unit registry and dimensions; values, stdlib glue (planned)
 │   ├── main.c           `mfl` command-line driver
 │   └── version.c
 ├── include/mfl/         Public C API headers
 ├── modules/             Scientific modules, independent of the core
-│   ├── math/  units/  numerical/  welding/
+│   ├── numerical/       Numerical library (vector ops, 1D heat solver, export) — plain C11
+│   ├── math/  units/  welding/
 ├── examples/            basic/  thermal/  welding/  embedding/
 ├── tests/               language/  units/  numerical/
 ├── benchmarks/
@@ -205,7 +250,14 @@ Run a program:
 ./build/mfl examples/welding/heat_input.mfl       # prints: 480 J/mm
 ./build/mfl examples/thermal/steel_properties.mfl
 ./build/mfl examples/welding/heat_input_v02.mfl   # v0.2 demonstration
+./build/mfl examples/thermal/bar_heated_end.mfl --csv out/bar_heated_end.csv   # v0.3
 ```
+
+`mfl` exit codes: 0 success, 1 errors in the program (compile-time or
+run-time, solver errors included) or bad usage, 3 internal failure, 4 the
+export files could not be written. Binary packages for Windows, Linux and
+macOS (executable, examples, header, libraries, instructions) are built by
+CI as workflow artifacts.
 
 Inspect the stages: `--tokens` (lexer), `--ast` (parser), `--types`
 (inferred types and dimensions, functions included), `--bytecode`
@@ -218,11 +270,12 @@ Inspect the stages: `--tokens` (lexer), `--ast` (parser), `--types`
 |---------|-------|
 | **v0.0.x** ✅ | Repository, documentation, build system, CI |
 | **v0.1 — core** ✅ | Lexer, parser, AST, bytecode compiler, VM; numbers, strings, `let`, arithmetic, `print`; SI units with dimension checking and `.to()`; heat-input conformance test passing; C embedding API |
-| **v0.2** ✅ (this release) | Functions, control flow, arrays, gradual type annotations, absolute temperatures, error messages with source locations at compile and run time |
-| **v0.3** | `numerical` module: ODE integrators, 1D finite-difference heat solver, verification suite |
+| **v0.2** ✅ | Functions, control flow, arrays, gradual type annotations, absolute temperatures, error messages with source locations at compile and run time |
+| **v0.3** ✅ (this release) | `import`; `numerical` module; 1D transient heat conduction (explicit FD) verified against the analytical solution; CSV/JSON export; C API for simulations; packages |
+| **v0.3.x** | Implicit schemes (backward Euler, Crank–Nicolson), convection boundaries, ODE integrators |
 | **v0.4** | C embedding API stabilised; experiment records (parameters, units, method, results) |
 | **v0.5** | 2D/3D moving heat sources, Goldak model, experimental comparison |
-| **later** | WebAssembly build, C/C++/Fortran library bindings, game integration |
+| **later** | C/C++/Fortran library bindings, game integration |
 
 ## Contributing
 
@@ -250,8 +303,11 @@ materials, welding, manufacturing and numerical methods.
 - ✅ Units: SI base and derived, prefixes, min/h/L/bar/percent, absolute temperatures in degC, exact conversions
 - ✅ C embedding API (`include/mfl/mfl.h`, `docs/embedding.md`), usable from C and C++, with run-time errors and an instruction limit
 - ✅ Conformance tests: `480 J/mm` (v0.1) and the v0.2 acceptance demonstration
-- ⏳ `break`/`continue`, closures, modules (`import`), a garbage collector for arrays
-- ⏳ Numerical module (1D heat conduction solver: next milestone) and welding models — **design only**
+- ✅ Modules: `import "file.mfl"` (each file once, cycles and missing files reported) and C modules `math`, `numerical`, `heat`
+- ✅ 1D transient heat conduction: FTCS with stability check, CSV/JSON export (atomic, with completion marker), same solver from MFL, the CLI and C
+- ✅ CI on Linux (GCC, Clang), macOS, Windows with warnings as errors; ASan + UBSan; packages with a smoke test
+- ⏳ `break`/`continue`, closures, a garbage collector for arrays
+- ⏳ Implicit schemes, moving heat sources, 2D/3D and welding models — **design only**
 
 ## License
 

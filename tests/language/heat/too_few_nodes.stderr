@@ -1,0 +1,1 @@
+tests/language/heat/too_few_nodes.mfl:2:1: runtime error: argument 1 of 'heat.nodes' ('count') must be a whole number >= 3, found 2

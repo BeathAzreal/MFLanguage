@@ -1,0 +1,1 @@
+tests/language/heat/negative.mfl:2:1: runtime error: heat.bar: conductivity (thermal conductivity k) must be positive, found -45 W/(m*K)

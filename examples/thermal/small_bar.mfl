@@ -1,0 +1,19 @@
+# Small 1D heat conduction case whose export is kept in the repository
+# (examples/thermal/output/small_bar.csv and .json), regenerated with:
+#
+#   mfl examples/thermal/small_bar.mfl --csv examples/thermal/output/small_bar.csv
+#
+# A 20 mm steel bar, 5 nodes, initial 20 degC, left end held at 100 degC,
+# right end insulated, 2 s in steps of 0.5 s, every step sampled.
+import heat
+import "materials/carbon_steel.mfl"
+heat.bar(20 mm, k_steel, rho_steel, cp_steel)
+heat.nodes(5)
+heat.initial_temperature(20 degC)
+heat.left_temperature(100 degC)
+heat.right_insulated()
+heat.time_step(0.5 s)
+heat.end_time(2.25 s)          # between steps: the last step is 0.25 s
+heat.run()
+print("samples:", heat.times())
+print("final:", heat.final_profile())
