@@ -125,3 +125,44 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
 - **Consequências:** unidades como `µm` e `Ω` precisam ser escritas como
   `um` e `ohm` por enquanto. As mensagens de erro apontam a coluna que o
   usuário vê no editor.
+
+## ADR-013 — Em um literal com unidade, `*` e `/` seguidos de nome pertencem à unidade
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Contexto:** `5 mm/s` precisa ser uma quantidade, mas `5 mm / t` é
+  ambíguo: pode ser milímetros por `t` ou `5 mm` dividido pela variável `t`.
+- **Alternativas:** (a) espaços com significado (`mm/s` × `mm / s`);
+  (b) unidade sempre entre colchetes (`5[mm/s]`); (c) a regra da
+  especificação: depois de um número, `*` e `/` seguidos de nome ou `(`
+  continuam a unidade.
+- **Decisão:** (c), como já previa a especificação. `*` ou `/` seguidos de
+  número encerram a unidade (`5 mm * 2` é `(5 mm)·2`). Para dividir por uma
+  variável, escreve-se `(5 mm) / t`.
+- **Justificativa:** mantém a notação de engenharia (`7850 kg/m^3`) sem
+  sintaxe extra. A armadilha `5 mm / t` fica documentada, e a etapa
+  semântica vai acusar "unidade desconhecida `t`".
+
+## ADR-014 — AST em arena e recuperação de erros em "modo pânico"
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** todos os nós são alocados em uma região liberada de uma só
+  vez. Após um erro, o parser ignora o resto do comando e continua no
+  próximo, até 50 erros.
+- **Justificativa:** sem liberação nó a nó, não há vazamento nem ponteiro
+  solto, o que é importante para embutir a linguagem em jogos. Vários erros
+  por execução ajudam estudantes. O limite de memória configurável permitiu
+  testar todos os pontos de falta de memória.
+
+## ADR-015 — Palavra-chave de comando no início da linha sempre encerra o comando anterior
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Contexto:** com a regra de continuação dentro de `()`, um parêntese
+  esquecido engolia o resto do arquivo (ver diário de 2026-11-06, parser).
+- **Decisão:** linhas que começam com `let var fn if while for return
+  import` encerram o comando anterior, mesmo dentro de um grupo aberto ou
+  depois de um operador.
+- **Consequências:** programas válidos não mudam, porque essas palavras não
+  podem aparecer dentro de expressões. Se no futuro alguma delas puder
+  aparecer em uma expressão (por exemplo, `fn` anônima), esta regra precisa
+  ser revista.
+

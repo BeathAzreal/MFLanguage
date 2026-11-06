@@ -44,6 +44,14 @@ lines. A line break does **not** produce `NEWLINE` when:
    `->`, `:`;
 3. the previous token is `;` or `{`, or it is the start of the file.
 
+**Exception (error recovery):** a line that starts with a keyword that can
+only begin a statement — `let var fn if while for return import` — always
+ends the previous statement, even inside an unclosed `(`/`[` or after a
+trailing operator. These keywords cannot appear inside an expression, so
+this never changes a valid program; it only makes an unclosed group or a
+dangling operator an error at that line instead of swallowing the rest of
+the file.
+
 So an expression can be continued by ending a line with an operator, but
 **not** by starting the next line with one:
 
@@ -134,21 +142,40 @@ let k     = 45 W/(m*K)
 let rho   = 7850 kg/m^3
 ```
 
+> **Parsing implemented** (v0.1). Resolving unit names and checking
+> dimensions is done by a later stage (not implemented yet).
+
 Unit expression grammar:
 
 ```
+quantity    := NUMBER unit_expr          -- unit_expr must start with a name
 unit_expr   := unit_term (('*' | '/') unit_term)*
-unit_term   := unit_atom ('^' signed_int)?
+unit_term   := unit_atom ('^' ('+' | '-')? INTEGER)?
 unit_atom   := UNIT_SYMBOL | '(' unit_expr ')'
 ```
 
-In a quantity literal, `/` and `*` bind to the unit (so `5 mm/s` is five
-millimetres per second, not `5 mm` divided by a variable `s`). Unit symbols
-live in their own namespace, so a variable named `s` does not shadow the
-second.
+Binding rules (the parser applies them; `mfl --ast` shows the result):
 
-*(open question)* whether to require a space or allow `5mm`. Draft: both
-are accepted.
+| Source | Tree | Why |
+|--------|------|-----|
+| `5 mm/s` | `(quantity 5 (/ mm s))` | `/` followed by a name continues the unit |
+| `45 W/(m*K)` | `(quantity 45 (/ W (* m K)))` | `(` after `/` or `*` opens a unit group |
+| `2 m^-2` | `(quantity 2 (^ m (- 2)))` | integer exponent, optional sign |
+| `5 mm * 2` | `(* (quantity 5 mm) 2)` | `*` followed by a number ends the unit |
+| `5 mm / t` | `(quantity 5 (/ mm t))` | **`t` is read as a unit**, not a variable |
+| `(5 mm) / t` | `(/ (quantity 5 mm) t)` | parentheses end the quantity |
+| `5 mm.to(m)` | `(call (. (quantity 5 mm) to) m)` | `.` ends the unit |
+
+So, in a quantity literal, `/` and `*` bind to the unit: `5 mm/s` is five
+millimetres per second, not `5 mm` divided by a variable `s`. To divide or
+multiply a quantity by a variable, put the quantity in parentheses. Unit
+symbols live in their own namespace, so a variable named `s` does not
+shadow the second.
+
+A space between number and unit is optional: `5mm` and `5 mm` are the same.
+Exponents must be integer literals (`m^2.5` and `m^x` are syntax errors).
+`%` is **not** a unit in v0.1 (it is the remainder operator); write `0.5`
+instead of `50 %`.
 
 ### 5.1 Conversion
 
@@ -160,13 +187,21 @@ energy.dim            # dimension descriptor, e.g. M·T⁻²
 
 ## 6. Declarations
 
+> **Parsing implemented** (v0.1).
+
 ```mfl
 let x = 10 mm      # immutable binding
 var t = 0 s        # mutable binding
-t = t + 0.1 s
+t = t + 0.1 s      # assignment
 ```
 
+Only a plain variable can be assigned in v0.1 (`a.b = 1` and `f() = 1` are
+syntax errors). Whether the variable exists and is mutable is checked by a
+later stage.
+
 ## 7. Expressions
+
+> **Parsing implemented** (v0.1).
 
 Precedence (high → low):
 
@@ -182,11 +217,19 @@ Precedence (high → low):
 | 8 | `and` | left |
 | 9 | `or` | left |
 
+Consequences worth knowing: `-x^2` is `-(x^2)`; `2^-1` is allowed;
+`2^3^2` is `2^(3^2)`; `not a == b` is `(not a) == b`; comparisons do not
+chain (`a < b < c` is `(a < b) < c`).
+
 Dimensional rules: `+ - < <= > >= == !=` require equal dimensions;
 `* /` combine dimensions; `^` requires a dimensionless, compile-time-known
 exponent when the base has a dimension.
 
 ## 8. Control flow and functions *(v0.2)*
+
+Not parsed in v0.1: a statement starting with `fn`, `if`, `else`, `while`,
+`for`, `return` or `import` is reported as "not supported yet (planned for
+v0.2)" and skipped, including its braced block.
 
 ```mfl
 if T > 1500 degC { print("melted") } else { print("solid") }

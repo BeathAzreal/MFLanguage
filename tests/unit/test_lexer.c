@@ -281,6 +281,26 @@ static void test_newlines(void)
     EXPECT_KINDS("\"esc\\\r\nx", MFL_TOK_ERROR, MFL_TOK_NEWLINE, MFL_TOK_IDENT);
     /* A lone CR is whitespace, not a line break. */
     EXPECT_KINDS("a\rb", MFL_TOK_IDENT, MFL_TOK_IDENT);
+    /* An unclosed group ends at a line starting with a statement keyword. */
+    EXPECT_KINDS("x = (1 +\nlet y = 2", MFL_TOK_IDENT, MFL_TOK_EQ, MFL_TOK_LPAREN,
+                 MFL_TOK_NUMBER, MFL_TOK_PLUS, MFL_TOK_NEWLINE, MFL_TOK_LET, MFL_TOK_IDENT,
+                 MFL_TOK_EQ, MFL_TOK_NUMBER);
+    EXPECT_KINDS("f(a\n# c\n  var", MFL_TOK_IDENT, MFL_TOK_LPAREN, MFL_TOK_IDENT,
+                 MFL_TOK_NEWLINE, MFL_TOK_VAR);
+    /* Same after a trailing operator outside a group. */
+    EXPECT_KINDS("x = 1 +\nlet y", MFL_TOK_IDENT, MFL_TOK_EQ, MFL_TOK_NUMBER, MFL_TOK_PLUS,
+                 MFL_TOK_NEWLINE, MFL_TOK_LET, MFL_TOK_IDENT);
+    /* No duplicate NEWLINE after a boundary token. */
+    EXPECT_KINDS("{\nlet x", MFL_TOK_LBRACE, MFL_TOK_LET, MFL_TOK_IDENT);
+    EXPECT_KINDS("a;\nvar x", MFL_TOK_IDENT, MFL_TOK_SEMICOLON, MFL_TOK_VAR, MFL_TOK_IDENT);
+    /* The group is reset: a later ')' does not go negative or re-open it. */
+    EXPECT_KINDS("f(\nlet a = g(1)\nb", MFL_TOK_IDENT, MFL_TOK_LPAREN, MFL_TOK_NEWLINE,
+                 MFL_TOK_LET, MFL_TOK_IDENT, MFL_TOK_EQ, MFL_TOK_IDENT, MFL_TOK_LPAREN,
+                 MFL_TOK_NUMBER, MFL_TOK_RPAREN, MFL_TOK_NEWLINE, MFL_TOK_IDENT);
+    /* ...but not at other keywords or identifiers that merely start with one. */
+    EXPECT_KINDS("f(a,\n not b,\n letter)", MFL_TOK_IDENT, MFL_TOK_LPAREN, MFL_TOK_IDENT,
+                 MFL_TOK_COMMA, MFL_TOK_NOT, MFL_TOK_IDENT, MFL_TOK_COMMA, MFL_TOK_IDENT,
+                 MFL_TOK_RPAREN);
     /* Unbalanced ')' does not make depth negative. */
     EXPECT_KINDS(")\na", MFL_TOK_RPAREN, MFL_TOK_NEWLINE, MFL_TOK_IDENT);
 }

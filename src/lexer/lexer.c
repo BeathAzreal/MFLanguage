@@ -149,6 +149,25 @@ static int continues_line(MflTokenKind k)
     }
 }
 
+/* True if the input at the cursor is a keyword that can only start a
+ * statement. Used to stop an unclosed '(' or '[' from swallowing the
+ * following lines. */
+static int at_statement_keyword(const MflLexer *lx)
+{
+    size_t n = 0;
+    MflTokenKind k;
+    if (!is_ident_start(peek(lx, 0))) {
+        return 0;
+    }
+    while (is_ident_char(peek(lx, n))) {
+        n++;
+    }
+    k = keyword_or_ident(lx->cur, n);
+    return k == MFL_TOK_LET || k == MFL_TOK_VAR || k == MFL_TOK_FN || k == MFL_TOK_IF ||
+           k == MFL_TOK_WHILE || k == MFL_TOK_FOR || k == MFL_TOK_RETURN ||
+           k == MFL_TOK_IMPORT;
+}
+
 /* ------------------------------------------------------------------------ */
 /* Scanners                                                                  */
 /* ------------------------------------------------------------------------ */
@@ -267,6 +286,27 @@ MflToken mfl_lexer_next(MflLexer *lx)
             }
         } else {
             break;
+        }
+    }
+
+    /* A line that starts with a statement keyword always ends the previous
+     * statement: it closes any open group (which was left unclosed) and
+     * overrides a trailing operator. The parser then reports the error at
+     * the end of the broken line instead of losing the next one. */
+    if (saw_newline && at_statement_keyword(lx)) {
+        int boundary = lx->last == MFL_TOK_NEWLINE || lx->last == MFL_TOK_SEMICOLON ||
+                       lx->last == MFL_TOK_LBRACE;
+        lx->group_depth = 0;
+        if (!boundary) {
+            MflToken t;
+            t.kind = MFL_TOK_NEWLINE;
+            t.start = nl.start;
+            t.length = 0;
+            t.line = nl.line;
+            t.column = nl.column;
+            t.message = NULL;
+            lx->last = MFL_TOK_NEWLINE;
+            return t;
         }
     }
 

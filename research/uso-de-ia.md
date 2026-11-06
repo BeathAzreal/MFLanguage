@@ -22,6 +22,7 @@ na IC ou no TCC.
 | 2026-11-05 | Documentação de pesquisa (`research/`) | Redigiu estrutura e textos | Solicitou e vai manter os registros | Pendente |
 | 2026-11-06 | Correções no CMake (PR #1) | Implementou, testou e verificou no CI, incluindo o teste do `/WX` | Definiu os requisitos, apagou os branches temporários, autorizou o merge | CI verificado; revisão do código pendente |
 | 2026-11-06 | Analisador léxico (`src/lexer/`, testes, `mfl --tokens`) | Implementou o código e os testes, verificou com sanitizers e CI | Solicitou a etapa | Testes automatizados; revisão do código pendente |
+| 2026-11-06 | Parser e AST (`src/parser/`, `src/runtime/arena.*`, testes, `mfl --ast`) | Implementou o código e os testes, verificou com sanitizers, fuzz e CI | Autorizou o merge do lexer e solicitou a etapa | Testes automatizados; revisão do código pendente |
 
 ## Boas práticas adotadas
 

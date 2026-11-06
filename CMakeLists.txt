@@ -23,6 +23,9 @@ option(MFL_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 add_library(mfl_core
     src/version.c
     src/lexer/lexer.c
+    src/parser/ast.c
+    src/parser/parser.c
+    src/runtime/arena.c
 )
 # include/ holds the public C API; src/ holds internal headers
 # (e.g. lexer/lexer.h) used by the core, the CLI and the unit tests.
@@ -92,6 +95,13 @@ if(MFL_BUILD_TESTS)
     mfl_set_warnings(test_lexer)
     add_test(NAME lexer_unit COMMAND test_lexer)
 
+    # Parser unit tests.
+    add_executable(test_parser tests/unit/test_parser.c)
+    target_link_libraries(test_parser PRIVATE mfl_core)
+    target_include_directories(test_parser PRIVATE ${PROJECT_SOURCE_DIR}/src)
+    mfl_set_warnings(test_parser)
+    add_test(NAME parser_unit COMMAND test_parser)
+
     # Token-stream golden tests: `mfl --tokens <name>.mfl` must print
     # exactly tests/language/tokens/<name>.tokens.
     function(mfl_add_token_test name source expected_exit)
@@ -107,4 +117,22 @@ if(MFL_BUILD_TESTS)
         ${PROJECT_SOURCE_DIR}/examples/welding/heat_input.mfl 0)
     mfl_add_token_test(errors
         ${PROJECT_SOURCE_DIR}/tests/language/tokens/errors.mfl 1)
+
+    # Syntax-tree golden tests: `mfl --ast <file>` is run from the source
+    # directory with a relative path; stdout must equal <name>.ast and
+    # stderr <name>.stderr (an empty file when there are no errors).
+    function(mfl_add_ast_test name source expected_exit)
+        add_test(NAME parser_ast_${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DPROGRAM=$<TARGET_FILE:mfl>
+                "-DARGS=--ast;${source}"
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/language/ast/${name}.ast
+                -DEXPECTED_STDERR=${PROJECT_SOURCE_DIR}/tests/language/ast/${name}.stderr
+                -DEXPECTED_EXIT=${expected_exit}
+                -DWORKDIR=${PROJECT_SOURCE_DIR}
+                -P ${PROJECT_SOURCE_DIR}/tests/cmake/compare_output.cmake)
+    endfunction()
+    mfl_add_ast_test(heat_input examples/welding/heat_input.mfl 0)
+    mfl_add_ast_test(expressions tests/language/ast/expressions.mfl 0)
+    mfl_add_ast_test(errors tests/language/ast/errors.mfl 1)
 endif()
