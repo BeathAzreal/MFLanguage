@@ -237,7 +237,7 @@ static MflType unit_fail(MflExpr *e)
     return e->type;
 }
 
-static MflType unit_ok(MflExpr *e, MflDim dim, double scale)
+static MflType unit_ok(MflExpr *e, MflDim dim, MflScale scale)
 {
     e->type = make_type(MFL_TYPE_UNIT);
     e->type.dim = dim;
@@ -248,7 +248,7 @@ static MflType unit_ok(MflExpr *e, MflDim dim, double scale)
 /* Resolves a unit expression tree; records type UNIT and the SI scale. */
 static MflType check_unit(Checker *c, MflExpr *e)
 {
-    double scale = 1.0;
+    MflScale scale = mfl_scale_one();
     MflDim dim = mfl_dim_none();
 
     switch (e->kind) {
@@ -290,19 +290,7 @@ static MflType check_unit(Checker *c, MflExpr *e)
                 error_at(c, e, "unit exponent out of range");
                 return unit_fail(e);
             }
-            {
-                double base = e->as.binary.left->unit_scale;
-                long k = n < 0 ? -n : n;
-                long i;
-                scale = 1.0;
-                for (i = 0; i < k; i++) {
-                    scale *= base;
-                }
-                if (n < 0) {
-                    scale = 1.0 / scale;
-                }
-            }
-            return unit_ok(e, dim, scale);
+            return unit_ok(e, dim, mfl_scale_pow(e->as.binary.left->unit_scale, n));
         }
         if (op == MFL_TOK_STAR || op == MFL_TOK_SLASH) {
             l = check_unit(c, e->as.binary.left);
@@ -316,8 +304,8 @@ static MflType check_unit(Checker *c, MflExpr *e)
                 return unit_fail(e);
             }
             scale = op == MFL_TOK_STAR
-                        ? e->as.binary.left->unit_scale * e->as.binary.right->unit_scale
-                        : e->as.binary.left->unit_scale / e->as.binary.right->unit_scale;
+                        ? mfl_scale_mul(e->as.binary.left->unit_scale, e->as.binary.right->unit_scale)
+                        : mfl_scale_div(e->as.binary.left->unit_scale, e->as.binary.right->unit_scale);
             return unit_ok(e, dim, scale);
         }
         break;
