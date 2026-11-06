@@ -259,6 +259,28 @@ static void test_newlines(void)
     /* Windows line endings behave like LF. */
     EXPECT_KINDS("a\r\n\r\nb\r\n", MFL_TOK_IDENT, MFL_TOK_NEWLINE, MFL_TOK_IDENT,
                  MFL_TOK_NEWLINE);
+    /* CRLF: same tokens AND same positions as LF (Windows checkouts). */
+    {
+        TokenList lf, crlf;
+        int i, same = 1;
+        lex(&lf, "let a = 5 # c\nlet s = \"open\nx\n");
+        lex(&crlf, "let a = 5 # c\r\nlet s = \"open\r\nx\r\n");
+        CHECK(lf.count == crlf.count);
+        for (i = 0; i < lf.count && i < crlf.count; i++) {
+            if (lf.tok[i].kind != crlf.tok[i].kind || lf.tok[i].line != crlf.tok[i].line ||
+                lf.tok[i].column != crlf.tok[i].column ||
+                lf.tok[i].length != crlf.tok[i].length) {
+                same = 0;
+            }
+        }
+        CHECK(same);
+        /* The unterminated string does not swallow the '\r'. */
+        CHECK(crlf.tok[8].kind == MFL_TOK_ERROR && lexeme_is(&crlf.tok[8], "\"open"));
+        CHECK(crlf.tok[4].kind == MFL_TOK_NEWLINE && crlf.tok[4].column == 14);
+    }
+    EXPECT_KINDS("\"esc\\\r\nx", MFL_TOK_ERROR, MFL_TOK_NEWLINE, MFL_TOK_IDENT);
+    /* A lone CR is whitespace, not a line break. */
+    EXPECT_KINDS("a\rb", MFL_TOK_IDENT, MFL_TOK_IDENT);
     /* Unbalanced ')' does not make depth negative. */
     EXPECT_KINDS(")\na", MFL_TOK_RPAREN, MFL_TOK_NEWLINE, MFL_TOK_IDENT);
 }

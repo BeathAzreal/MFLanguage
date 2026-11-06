@@ -32,6 +32,10 @@ static int peek(const MflLexer *lx, size_t n)
     return (unsigned char)lx->cur[n];
 }
 
+/* Line break length at the cursor: 1 for "\n", 2 for "\r\n", else 0.
+ * A lone "\r" is not a line break (it is whitespace). */
+static size_t line_break_at(const MflLexer *lx);
+
 /* Consumes one byte, keeping line and column (in code points) current. */
 static void advance(MflLexer *lx)
 {
@@ -42,6 +46,17 @@ static void advance(MflLexer *lx)
     } else if ((c & 0xC0) != 0x80) { /* not a UTF-8 continuation byte */
         lx->column++;
     }
+}
+
+static size_t line_break_at(const MflLexer *lx)
+{
+    if (peek(lx, 0) == '\n') {
+        return 1;
+    }
+    if (peek(lx, 0) == '\r' && peek(lx, 1) == '\n') {
+        return 2;
+    }
+    return 0;
 }
 
 /* ------------------------------------------------------------------------ */
@@ -175,7 +190,7 @@ static MflToken scan_string(MflLexer *lx, Mark m)
     advance(lx); /* opening quote */
     for (;;) {
         int c = peek(lx, 0);
-        if (c == -1 || c == '\n') {
+        if (c == -1 || line_break_at(lx) > 0) {
             return error_token(lx, m, "unterminated string");
         }
         if (c == '"') {
@@ -184,7 +199,7 @@ static MflToken scan_string(MflLexer *lx, Mark m)
         }
         if (c == '\\') {
             int e = peek(lx, 1);
-            if (e == -1 || e == '\n') {
+            if (e == -1 || e == '\n' || (e == '\r' && peek(lx, 2) == '\n')) {
                 advance(lx);
                 return error_token(lx, m, "unterminated string");
             }
@@ -234,19 +249,22 @@ MflToken mfl_lexer_next(MflLexer *lx)
 
     /* Whitespace, comments and line breaks. */
     for (;;) {
+        size_t br = line_break_at(lx);
         c = peek(lx, 0);
-        if (c == ' ' || c == '\t' || c == '\r') {
-            advance(lx);
-        } else if (c == '#') {
-            while (peek(lx, 0) != -1 && peek(lx, 0) != '\n') {
-                advance(lx);
-            }
-        } else if (c == '\n') {
+        if (br > 0) {
             if (!saw_newline) {
                 nl = mark(lx);
                 saw_newline = 1;
             }
+            while (br-- > 0) {
+                advance(lx);
+            }
+        } else if (c == ' ' || c == '\t' || c == '\r') {
             advance(lx);
+        } else if (c == '#') {
+            while (peek(lx, 0) != -1 && line_break_at(lx) == 0) {
+                advance(lx);
+            }
         } else {
             break;
         }
