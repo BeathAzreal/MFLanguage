@@ -59,7 +59,7 @@ It is **not executable yet**.*
 | Feature | Status |
 |---------|--------|
 | Lexer | **Implemented** (v0.1) — `mfl --tokens` |
-| Parser and AST | Planned (v0.1) |
+| Parser and AST | **Implemented** (v0.1 subset) — `mfl --ast` |
 | Bytecode compiler | Planned (v0.1) |
 | Custom stack-based virtual machine | Planned (v0.1) |
 | `double` precision as the default numeric type | Planned (v0.1) |
@@ -124,10 +124,10 @@ MFLanguage/
 ├── research/            Research log for IC/TCC (Portuguese): diary, ADRs, AI-use statement, references
 ├── src/
 │   ├── lexer/           Tokenizer (implemented)
-│   ├── parser/          Parser + AST (planned)
+│   ├── parser/          Parser + AST (implemented, v0.1 subset)
 │   ├── compiler/        AST → bytecode (planned)
 │   ├── vm/              Bytecode virtual machine (planned)
-│   ├── runtime/         Values, units, memory, stdlib glue (planned)
+│   ├── runtime/         Arena allocator; values, units, stdlib glue (planned)
 │   ├── main.c           `mfl` CLI driver (stub)
 │   └── version.c
 ├── include/mfl/         Public C API headers
@@ -152,9 +152,11 @@ ctest --test-dir build --output-on-failure
 ./build/mfl --version
 ```
 
-At this stage the `mfl` binary can print the token stream of a file
-(`./build/mfl --tokens examples/welding/heat_input.mfl`); running a script
-exits with an explicit "not implemented yet" error.
+At this stage the `mfl` binary can print the token stream
+(`./build/mfl --tokens examples/welding/heat_input.mfl`) and the syntax tree
+(`./build/mfl --ast examples/welding/heat_input.mfl`) of a file. Running a
+script checks its syntax and then exits with an explicit "execution is not
+implemented yet" message.
 
 ## Roadmap
 
@@ -188,9 +190,10 @@ materials, welding, manufacturing and numerical methods.
 
 - ✅ Repository structure and design documents
 - ✅ CMake build (C11) and CI workflow (Linux/macOS/Windows)
-- ✅ `mfl` CLI (`--version`, `--help`, `--tokens`)
+- ✅ `mfl` CLI (`--version`, `--help`, `--tokens`, `--ast`; `mfl file.mfl` checks syntax)
 - ✅ Lexer with unit tests and token-stream golden tests
-- ⏳ Parser, compiler, VM — **not started**
+- ✅ Parser + AST for the v0.1 subset (`let`, `var`, assignment, expressions, quantity literals), with error recovery
+- ⏳ Semantic checks (names, units, dimensions), compiler, VM — **not started**
 - ⏳ Units and dimensional analysis — **design only**
 - ⏳ Numerical and welding modules — **design only**
 - ⏳ The example programs in `examples/` **cannot be executed yet**
