@@ -1238,8 +1238,8 @@ static void check_assignment(Checker *c, MflStmt *s)
         MflSymbol *g = l == NULL ? find_global(c, name) : NULL;
         MflType decl;
         int is_var;
-        int dline;
-        int dcol;
+        int dline = 0;
+        int dcol = 0;
         char old_t[TYPE_BUF];
         char new_t[TYPE_BUF];
 
@@ -1324,7 +1324,7 @@ static void check_for(Checker *c, MflStmt *s)
     if (s->range_end != NULL) {
         MflType last = check_expr(c, s->range_end);
         MflExpr *bad = NULL;
-        MflType bt;
+        MflType bt = make_type(MFL_TYPE_ERROR);
         if (!is_error(first) && !is_any(first) && !(is_number(first) && mfl_dim_is_none(first.dim))) {
             bad = s->value;
             bt = first;
