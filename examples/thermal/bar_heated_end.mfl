@@ -1,0 +1,56 @@
+# 1D transient heat conduction: a steel bar heated at one end.
+#
+#   mfl examples/thermal/bar_heated_end.mfl --csv bar_heated_end.csv
+#
+# writes the temperature history (bar_heated_end.csv: time_s, position_m,
+# temperature_K) and its metadata (bar_heated_end.json).
+#
+# Model (docs/heat-conduction.md): homogeneous bar, constant properties,
+# rho*cp*dT/dt = k*d2T/dx2, explicit finite differences on a uniform mesh.
+# This is the verification of a 1D BAR model. It is not a welding
+# simulation: there is no moving heat source and no 2D/3D geometry
+# (planned for a later milestone).
+import numerical
+import heat
+import "materials/carbon_steel.mfl"
+
+let length = 100 mm
+let x = numerical.linspace(0 mm, length, 21)   # uniform mesh: 21 nodes, dx = 5 mm
+
+heat.bar(length, k_steel, rho_steel, cp_steel)
+heat.mesh(x)
+heat.initial_temperature(20 degC)
+heat.left_temperature(500 degC)    # x = 0 held at 500 degC from t = 0
+heat.right_insulated()             # x = L: no heat flux
+
+let dt = 0.5 s
+let every = 20                     # one sample every 20 steps = 10 s
+print("stability limit: time_step <=", heat.max_time_step(), "; using", dt)
+heat.time_step(dt)
+heat.end_time(10 min)
+heat.sample_every(every)
+heat.run()
+print("samples:", heat.sample_count(), "nodes:", len(heat.positions()))
+
+# When does the center reach a chosen temperature? The answer is the time of
+# the FIRST SAMPLE at or above the threshold (no interpolation): the true
+# crossing lies between the previous sample and that one.
+let center = 50 mm
+fn report(threshold: Quantity[degC]) {
+    let t = heat.first_time_reaching(center, threshold)
+    if t == nil {
+        print("center does not reach", threshold, "within", heat.times()[heat.sample_count() - 1],
+              "| final:", heat.temperature(center, 10 min).to(degC))
+    } else {
+        let before = t - every * dt
+        print("center reaches", threshold, "at the sample t =", t, "| previous sample:", before,
+              "->", heat.temperature(center, before).to(degC))
+    }
+}
+report(150 degC)
+report(600 degC)                   # above the hot end: outside the simulated range
+
+let final = heat.final_profile()
+print("final: hot end", final[0].to(degC), "| center", final[10].to(degC), "| insulated end",
+      final[20].to(degC))
+print("final mean of the nodal temperatures:", numerical.mean(final).to(degC))

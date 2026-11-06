@@ -21,7 +21,7 @@
  * every failure is a status code plus a message, strings are UTF-8,
  * print() output goes to a host callback.
  *
- * STATUS: pre-alpha (v0.2). Inputs and outputs are numbers and quantities
+ * STATUS: pre-alpha (v0.3). Inputs and outputs are numbers and quantities
  * (scripts themselves may use functions, arrays, ...). Not yet available:
  * a host-supplied allocator (only a memory limit), strings/booleans/arrays
  * through the API, calling MFL functions from C.
@@ -41,9 +41,9 @@ extern "C" {
 #endif
 
 #define MFL_VERSION_MAJOR 0
-#define MFL_VERSION_MINOR 0
-#define MFL_VERSION_PATCH 1
-#define MFL_VERSION_STRING "0.0.1-dev"
+#define MFL_VERSION_MINOR 3
+#define MFL_VERSION_PATCH 0
+#define MFL_VERSION_STRING "0.3.0-dev"
 
 /* Returns the library version string (static storage, never NULL). */
 const char *mfl_version(void);

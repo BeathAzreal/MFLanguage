@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "modules/heat_natives.h"
 #include "runtime/number.h"
 #include "runtime/units.h"
 #include "vector.h"
@@ -293,6 +294,12 @@ static int num_mean(MflNativeEnv *env, const MflValue *a, MflValue *r)
 #define PC(name, min) {(name), MFL_NP_COUNT, NODIM, NULL, (min)}
 #define PD(name, kind, dim, unit) {(name), (kind), dim, (unit), 0}
 #define NOARGS {P(NULL, MFL_NP_NUMBER)}
+#define LENGTH DIM(1, 0, 0, 0, 0)
+#define TIME DIM(0, 0, 1, 0, 0)
+#define KELVIN DIM(0, 0, 0, 0, 1)
+#define CONDUCTIVITY DIM(1, 1, -3, 0, -1)  /* W/(m*K) = kg*m/(s^3*K) */
+#define DENSITY DIM(-3, 1, 0, 0, 0)        /* kg/m^3 */
+#define SPECIFIC_HEAT DIM(2, 0, -2, 0, -1) /* J/(kg*K) = m^2/(s^2*K) */
 
 static const MflNative natives[] = {
     /* math */
@@ -312,6 +319,44 @@ static const MflNative natives[] = {
      MFL_NF_NO_AFFINE, 0.0, num_sum},
     {"numerical", "mean", 1, {P("values", MFL_NP_NUMBERS)}, MFL_NR_ELEM_OF_FIRST, NODIM, 0, 0.0,
      num_mean},
+
+    /* heat (heat_natives.c; docs/heat-conduction.md) */
+    {"heat", "bar", 4,
+     {PD("length", MFL_NP_DIM, LENGTH, "m"), PD("conductivity", MFL_NP_DIM, CONDUCTIVITY, "W/(m*K)"),
+      PD("density", MFL_NP_DIM, DENSITY, "kg/m^3"),
+      PD("specific_heat", MFL_NP_DIM, SPECIFIC_HEAT, "J/(kg*K)")},
+     MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_bar},
+    {"heat", "nodes", 1, {PC("count", 3)}, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_nodes},
+    {"heat", "mesh", 1, {PD("positions", MFL_NP_DIM_ARRAY, LENGTH, "m")}, MFL_NR_NIL, NODIM, 0, 0.0,
+     mfl_heat_mesh},
+    {"heat", "initial_temperature", 1, {P("temperature", MFL_NP_TEMPERATURE)}, MFL_NR_NIL, NODIM, 0,
+     0.0, mfl_heat_initial_temperature},
+    {"heat", "initial_profile", 1, {P("temperatures", MFL_NP_TEMPERATURES)}, MFL_NR_NIL, NODIM, 0,
+     0.0, mfl_heat_initial_profile},
+    {"heat", "left_temperature", 1, {P("temperature", MFL_NP_TEMPERATURE)}, MFL_NR_NIL, NODIM, 0,
+     0.0, mfl_heat_left_temperature},
+    {"heat", "right_temperature", 1, {P("temperature", MFL_NP_TEMPERATURE)}, MFL_NR_NIL, NODIM, 0,
+     0.0, mfl_heat_right_temperature},
+    {"heat", "left_insulated", 0, NOARGS, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_left_insulated},
+    {"heat", "right_insulated", 0, NOARGS, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_right_insulated},
+    {"heat", "time_step", 1, {PD("time_step", MFL_NP_DIM, TIME, "s")}, MFL_NR_NIL, NODIM, 0, 0.0,
+     mfl_heat_time_step},
+    {"heat", "end_time", 1, {PD("end_time", MFL_NP_DIM, TIME, "s")}, MFL_NR_NIL, NODIM, 0, 0.0,
+     mfl_heat_end_time},
+    {"heat", "sample_every", 1, {PC("steps", 1)}, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_sample_every},
+    {"heat", "max_time_step", 0, NOARGS, MFL_NR_DIM, TIME, 0, 0.0, mfl_heat_max_time_step},
+    {"heat", "run", 0, NOARGS, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_run},
+    {"heat", "sample_count", 0, NOARGS, MFL_NR_NUMBER, NODIM, 0, 0.0, mfl_heat_sample_count},
+    {"heat", "times", 0, NOARGS, MFL_NR_DIM_ARRAY, TIME, 0, 0.0, mfl_heat_times},
+    {"heat", "positions", 0, NOARGS, MFL_NR_DIM_ARRAY, LENGTH, 0, 0.0, mfl_heat_positions},
+    {"heat", "profile", 1, {PC("sample", 0)}, MFL_NR_DIM_ARRAY, KELVIN, 0, 0.0, mfl_heat_profile},
+    {"heat", "final_profile", 0, NOARGS, MFL_NR_DIM_ARRAY, KELVIN, 0, 0.0, mfl_heat_final_profile},
+    {"heat", "temperature", 2,
+     {PD("position", MFL_NP_DIM, LENGTH, "m"), PD("time", MFL_NP_DIM, TIME, "s")}, MFL_NR_DIM,
+     KELVIN, 0, 0.0, mfl_heat_temperature},
+    {"heat", "first_time_reaching", 2,
+     {PD("position", MFL_NP_DIM, LENGTH, "m"), P("temperature", MFL_NP_TEMPERATURE)}, MFL_NR_ANY,
+     NODIM, 0, 0.0, mfl_heat_first_time_reaching},
 };
 
 #define NATIVE_COUNT ((int)(sizeof natives / sizeof natives[0]))
@@ -350,7 +395,7 @@ int mfl_native_module_exists(MflText name)
     return 0;
 }
 
-const char *mfl_native_module_list(void) { return "math, numerical"; }
+const char *mfl_native_module_list(void) { return "math, numerical, heat"; }
 
 void mfl_native_module_members(MflText module, char *buf, size_t size)
 {

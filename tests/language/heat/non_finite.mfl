@@ -1,0 +1,3 @@
+import heat
+heat.bar(100 mm, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.time_step(1 s / 0)

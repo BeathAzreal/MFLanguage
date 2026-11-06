@@ -1,0 +1,11 @@
+import heat
+heat.bar(100 mm, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.nodes(11)
+heat.initial_temperature(300 K)
+heat.left_insulated()
+heat.right_insulated()
+heat.time_step(1 s)
+heat.end_time(10 s)
+heat.sample_every(5)
+heat.run()
+print(heat.temperature(10 mm, 3 s))

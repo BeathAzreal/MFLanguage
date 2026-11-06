@@ -1,0 +1,26 @@
+# Analytical verification case, exported through the CLI:
+#   both ends at T0, T(x,0) = T0 + A sin(pi x / L)
+#   T(x,t) = T0 + A sin(pi x / L) exp(-alpha pi^2 t / L^2)
+# The CSV is compared with this formula by tests/numerical/check_heat_csv.c.
+import heat
+import numerical
+import math
+
+let L = 0.1 m
+let T0 = 300 K
+let A = 50 K
+let x = numerical.linspace(0 m, L, 17)
+var T = []
+for xi in x {
+    push(T, T0 + A * math.sin(math.pi * xi / L))
+}
+heat.bar(L, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.mesh(x)
+heat.initial_profile(T)
+heat.left_temperature(T0)
+heat.right_temperature(T0)
+heat.time_step(heat.max_time_step() / 2)     # Fourier number 1/4
+heat.end_time(60 s)
+heat.sample_every(4)
+heat.run()
+print(heat.sample_count(), "samples")

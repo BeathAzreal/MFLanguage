@@ -1,0 +1,10 @@
+# Dimensions and temperature kinds are checked before running.
+import heat
+heat.bar(100 mm, 45 W/m, 7850 kg/m^3, 460 J/(kg*K))
+heat.bar(100 s, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.initial_temperature(20 delta_degC)
+heat.left_temperature(5 kg)
+heat.time_step(0.5 m)
+heat.mesh([0 s, 1 s, 2 s])
+heat.nodes(5 mm)
+heat.run(1)

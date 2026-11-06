@@ -1,0 +1,6 @@
+stability limit: time_step <= 1.0030555555555556 s ; using 0.5 s
+samples: 61 nodes: 21
+center reaches 150 degC at the sample t = 90 s | previous sample: 80 s -> 146.86867502991004 degC
+center does not reach 600 degC within 600 s | final: 431.77034745218145 degC
+final: hot end 500 degC | center 431.77034745218145 degC | insulated end 403.50872401762297 degC
+final mean of the nodal temperatures: 439.2295559229285 degC

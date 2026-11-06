@@ -1,0 +1,8 @@
+tests/language/heat/wrong_dimension.mfl:3:18: error: argument 2 of 'heat.bar' ('conductivity') must be Quantity[kg*m/(s^3*K)] (W/(m*K)), found Quantity[kg*m/s^3]
+tests/language/heat/wrong_dimension.mfl:4:10: error: argument 1 of 'heat.bar' ('length') must be Quantity[m], found Quantity[s]
+tests/language/heat/wrong_dimension.mfl:5:26: error: argument 1 of 'heat.initial_temperature' ('temperature') must be an absolute temperature (K or degC), found a temperature difference in delta_degC
+tests/language/heat/wrong_dimension.mfl:6:23: error: argument 1 of 'heat.left_temperature' ('temperature') must be an absolute temperature (K or degC), found Quantity[kg]
+tests/language/heat/wrong_dimension.mfl:7:16: error: argument 1 of 'heat.time_step' ('time_step') must be Quantity[s], found Quantity[m]
+tests/language/heat/wrong_dimension.mfl:8:11: error: argument 1 of 'heat.mesh' ('positions') must be Array[Quantity[m]], found Array[Quantity[s]]
+tests/language/heat/wrong_dimension.mfl:9:12: error: argument 1 of 'heat.nodes' ('count') must be a plain Number (a count), found Quantity[m]
+tests/language/heat/wrong_dimension.mfl:10:1: error: 'heat.run' takes 0 arguments, but 1 was given

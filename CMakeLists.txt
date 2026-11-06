@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(MFL
-    VERSION 0.0.1
+    VERSION 0.3.0
     DESCRIPTION "MFL - Materials & Manufacturing Language"
     LANGUAGES C)
 
@@ -25,6 +25,7 @@ option(MFL_BUILD_EXAMPLES "Build the C embedding example" ON)
 add_library(mfl_numerical STATIC
     modules/numerical/vector.c
     modules/numerical/heat1d.c
+    modules/numerical/heat1d_export.c
     src/runtime/number.c
 )
 target_include_directories(mfl_numerical
@@ -48,6 +49,7 @@ add_library(mfl_core
     src/compiler/compiler.c
     src/compiler/loader.c
     src/modules/natives.c
+    src/modules/heat_natives.c
     src/vm/vm.c
     src/api/mfl_api.c
 )
@@ -175,6 +177,10 @@ if(MFL_BUILD_TESTS)
     target_link_libraries(test_heat1d PRIVATE mfl_numerical)
     mfl_set_warnings(test_heat1d)
     add_test(NAME numerical_heat1d COMMAND test_heat1d)
+    add_executable(test_heat1d_export tests/numerical/test_heat1d_export.c)
+    target_link_libraries(test_heat1d_export PRIVATE mfl_numerical)
+    mfl_set_warnings(test_heat1d_export)
+    add_test(NAME numerical_heat1d_export COMMAND test_heat1d_export)
 
     foreach(t number vm)
         add_executable(test_${t} tests/unit/test_${t}.c)
@@ -321,6 +327,96 @@ if(MFL_BUILD_TESTS)
         mfl_add_program_test(acceptance_${base} tests/language/acceptance/${base}.mfl
             tests/language/acceptance/${base}.stdout tests/language/acceptance/${base}.stderr 1)
     endforeach()
+
+    # ------------------------------------------------------------------
+    # v0.3: heat module, export and CLI (docs/heat-conduction.md).
+    # ------------------------------------------------------------------
+    mfl_add_run_test(heat_conformance tests/language/heat/conformance_heat.mfl
+        tests/language/heat/conformance_heat.expected)
+    foreach(base unstable wrong_dimension difference_at_runtime non_finite bad_mesh too_few_nodes
+            mesh_short negative missing_parameter no_run not_a_node not_a_sample)
+        mfl_add_program_test(heat_error_${base} tests/language/heat/${base}.mfl
+            tests/language/heat/${base}.stdout tests/language/heat/${base}.stderr 1)
+    endforeach()
+
+    add_executable(check_heat_csv tests/numerical/check_heat_csv.c)
+    if(MFL_LIBM)
+        target_link_libraries(check_heat_csv PRIVATE ${MFL_LIBM})
+    endif()
+    mfl_set_warnings(check_heat_csv)
+
+    set(MFL_OUT ${CMAKE_CURRENT_BINARY_DIR}/export)
+    function(mfl_add_export_test name exit_code regex)
+        add_test(NAME ${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DPROGRAM=$<TARGET_FILE:mfl>
+                -DWORKDIR=${PROJECT_SOURCE_DIR}
+                -DEXPECTED_EXIT=${exit_code}
+                "-DSTDERR_REGEX=${regex}"
+                ${ARGN}
+                -P ${PROJECT_SOURCE_DIR}/tests/cmake/run_export.cmake)
+    endfunction()
+
+    # The acceptance example: export, then check the files independently.
+    mfl_add_export_test(export_bar 0 "exported 61 samples x 21 nodes"
+        "-DARGS=examples/thermal/bar_heated_end.mfl|--csv|${MFL_OUT}/bar_heated_end.csv"
+        -DMKDIR=${MFL_OUT}
+        "-DCLEAN=${MFL_OUT}/bar_heated_end.csv|${MFL_OUT}/bar_heated_end.json"
+        "-DMUST_EXIST=${MFL_OUT}/bar_heated_end.csv|${MFL_OUT}/bar_heated_end.json"
+        "-DMUST_NOT_EXIST=${MFL_OUT}/bar_heated_end.csv.partial|${MFL_OUT}/bar_heated_end.json.partial")
+    set_tests_properties(export_bar PROPERTIES FIXTURES_SETUP bar_csv)
+    # Header, 1281 rows, t = 0 and 600 s, uniform positions 0..0.1 m, size and
+    # hash against the metadata; the hot end is exactly 773.15 K at every
+    # time; at t = 0 the rest of the bar is exactly 293.15 K.
+    add_test(NAME export_bar_csv_check
+        COMMAND check_heat_csv ${MFL_OUT}/bar_heated_end.csv ${MFL_OUT}/bar_heated_end.json
+            --end 773.15 0 --value 0 0.05 293.15 0 --value 0 0.1 293.15 0)
+    set_tests_properties(export_bar_csv_check PROPERTIES FIXTURES_REQUIRED bar_csv)
+    # Demonstration output: threshold reached (first sample at or above it)
+    # and threshold outside the simulated range.
+    add_test(NAME demo_bar_heated_end COMMAND $<TARGET_FILE:mfl> examples/thermal/bar_heated_end.mfl
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+    set_tests_properties(demo_bar_heated_end PROPERTIES PASS_REGULAR_EXPRESSION
+        "center reaches 150 degC at the sample t = 90 s [|] previous sample: 80 s -> 146[.][0-9]+ degC\ncenter does not reach 600 degC within 600 s")
+    mfl_add_run_test(run_bar_heated_end examples/thermal/bar_heated_end.mfl
+        tests/language/run/bar_heated_end.expected)
+
+    # Analytical case through the CLI: every CSV value against the formula.
+    # Tolerance 0.035 K = the bound declared for 17 nodes in test_heat1d.c.
+    mfl_add_export_test(export_sine 0 "exported 21 samples x 17 nodes"
+        "-DARGS=tests/language/heat/sine_export.mfl|--csv|${MFL_OUT}/sine.csv|--meta|${MFL_OUT}/sine_meta.json"
+        -DMKDIR=${MFL_OUT}
+        "-DCLEAN=${MFL_OUT}/sine.csv|${MFL_OUT}/sine_meta.json"
+        "-DMUST_EXIST=${MFL_OUT}/sine.csv|${MFL_OUT}/sine_meta.json")
+    set_tests_properties(export_sine PROPERTIES FIXTURES_SETUP sine_csv)
+    add_test(NAME export_sine_analytical
+        COMMAND check_heat_csv ${MFL_OUT}/sine.csv ${MFL_OUT}/sine_meta.json --sine 300 50 0.035)
+    set_tests_properties(export_sine_analytical PROPERTIES FIXTURES_REQUIRED sine_csv)
+
+    # Write failures: exit code 4, no metadata (the completion marker) and
+    # no temporary files left.
+    mfl_add_export_test(export_fail_missing_dir 4
+        "export failed: cannot write .*no metadata file was written"
+        "-DARGS=examples/thermal/bar_heated_end.mfl|--csv|${MFL_OUT}/no/such/dir/bar.csv"
+        "-DMUST_NOT_EXIST=${MFL_OUT}/no/such/dir/bar.json|${MFL_OUT}/no/such/dir/bar.csv.partial")
+    mfl_add_export_test(export_fail_target_is_directory 4
+        "export failed: cannot rename .*incomplete"
+        "-DARGS=examples/thermal/bar_heated_end.mfl|--csv|${MFL_OUT}/a_directory|--meta|${MFL_OUT}/dir_case.json"
+        -DMKDIR=${MFL_OUT}/a_directory
+        "-DCLEAN=${MFL_OUT}/dir_case.json|${MFL_OUT}/a_directory"
+        "-DMUST_NOT_EXIST=${MFL_OUT}/dir_case.json|${MFL_OUT}/dir_case.json.partial|${MFL_OUT}/a_directory.partial")
+    mfl_add_export_test(export_no_simulation 1 "did not run a simulation"
+        "-DARGS=examples/basic/hello.mfl|--csv|${MFL_OUT}/nothing.csv"
+        "-DMUST_NOT_EXIST=${MFL_OUT}/nothing.csv|${MFL_OUT}/nothing.json")
+    mfl_add_export_test(export_unstable_no_files 1 "runtime error: heat.run: unstable time step"
+        "-DARGS=tests/language/heat/unstable.mfl|--csv|${MFL_OUT}/unstable.csv"
+        "-DMUST_NOT_EXIST=${MFL_OUT}/unstable.csv|${MFL_OUT}/unstable.json")
+    mfl_add_export_test(cli_meta_needs_csv 1 "--meta needs --csv"
+        "-DARGS=examples/basic/hello.mfl|--meta|x.json")
+    mfl_add_export_test(cli_csv_needs_name 1 "'--csv' needs a file name"
+        "-DARGS=examples/basic/hello.mfl|--csv")
+    mfl_add_export_test(cli_unknown_argument 1 "unknown argument '--cvs'"
+        "-DARGS=examples/basic/hello.mfl|--cvs|x.csv")
 
     if(MFL_BUILD_EXAMPLES)
         add_test(NAME run_embed_example

@@ -1,0 +1,9 @@
+# Plain carbon steel, constant properties near room temperature.
+# Typical values used throughout the MFL documentation (docs/validation-plan.md,
+# examples/thermal/steel_properties.mfl); compare Incropera et al.,
+# Fundamentals of Heat and Mass Transfer, Table A.1 (plain carbon steel:
+# k = 60.5 W/(m*K), rho = 7854 kg/m^3, cp = 434 J/(kg*K)). Real steels vary
+# with composition and temperature; these are not measured data.
+let k_steel = 45 W/(m*K)
+let rho_steel = 7850 kg/m^3
+let cp_steel = 460 J/(kg*K)

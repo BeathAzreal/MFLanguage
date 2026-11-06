@@ -1,0 +1,4 @@
+import heat
+import numerical
+heat.bar(100 mm, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.mesh([0 mm, 10 mm, 30 mm, 100 mm])

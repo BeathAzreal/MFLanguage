@@ -21,6 +21,7 @@
 #include <stddef.h>
 
 #include "compiler/chunk.h"
+#include "heat1d.h"
 #include "parser/ast.h"
 
 /* Parameter kinds. */
@@ -80,6 +81,20 @@ typedef struct {
     double              constant;
     MflNativeImpl       impl;
 } MflNative;
+
+/* State of the heat module during one run of a program: the configuration
+ * built by heat.bar(), heat.nodes(), ... and the results of the last
+ * heat.run(). Owned by whoever runs the program (the mfl command, the
+ * embedding API), which reads the results after the run. */
+struct MflNativeSession {
+    MflH1Config config;
+    MflH1Result result;     /* result.T == NULL until heat.run() succeeds */
+    int         runs;       /* successful heat.run() calls */
+    size_t      memory_limit;
+};
+
+void mfl_native_session_init(MflNativeSession *s, size_t memory_limit);
+void mfl_native_session_free(MflNativeSession *s);
 
 struct MflNativeEnv {
     const MflChunk   *chunk;
