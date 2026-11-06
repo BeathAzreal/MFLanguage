@@ -210,3 +210,49 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
   com deslocamento (°C) exige regras próprias (`docs/units.md` §5), ainda
   em aberto.
 
+## ADR-020 — Valores guardam a magnitude na unidade de exibição
+
+- **Data:** 2026-11-06 · **Status:** Aceita (substitui a representação
+  descrita no rascunho de `docs/architecture.md`)
+- **Alternativas:** guardar tudo em SI e converter só na impressão.
+- **Decisão:** cada número guarda a magnitude na sua unidade de exibição.
+  Operações entre unidades diferentes convertem para SI; `+ - %` entre
+  operandos da mesma unidade mantêm a unidade (`1 mm + 2 mm` → `3 mm`).
+- **Justificativa:** `print(0.1 mm)` imprime exatamente `0.1 mm`, sem
+  passar por conversões com arredondamento. A regra de manter a unidade
+  comum é uma extensão de `docs/units.md` §4, documentada lá.
+
+## ADR-021 — Fatores de unidade exatos (num/den × 10^k)
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Contexto:** multiplicar fatores em ponto flutuante fazia
+  `(1 g/cm^3).to(kg/m^3)` resultar em `999.9999999999999`.
+- **Decisão:** cada unidade guarda inteiros `num`, `den` e um expoente
+  decimal `k`. A conversão aplica a parte inteira e depois 10^k em uma única
+  operação exata.
+- **Consequência:** conversões entre prefixos decimais têm arredondamento
+  correto. Erro máximo medido em somas com unidades mistas: 2,3 ulp.
+
+## ADR-022 — Semântica IEEE 754 e ausência de erros em tempo de execução na v0.1
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Alternativas:** erro em tempo de execução para divisão por zero.
+- **Decisão:** divisão por zero dá `inf`, `-inf` ou `nan`, como em C,
+  Fortran e NumPy. `%` segue o `fmod` do C (sinal do dividendo). Como nomes,
+  tipos e dimensões são verificados antes, um programa v0.1 aceito não tem
+  erros em tempo de execução.
+- **Justificativa:** compatível com o software científico que os usuários
+  conhecem, e a VM fica simples e rápida. Pode ser revisto quando houver
+  funções e laços (v0.2).
+
+## ADR-023 — Leitura e escrita de números próprias, independentes de *locale*
+
+- **Data:** 2026-11-06 · **Status:** Aceita (implementa o ADR-011)
+- **Decisão:** a leitura usa o caminho exato de Clinger e, nos casos raros,
+  o `strtod` com o separador adaptado ao *locale*. A escrita usa a menor
+  representação que volta ao mesmo valor, com notação exponencial fora de
+  1e-4 ≤ |x| < 1e16.
+- **Verificação:** 200000 literais comparados com `strtod`; 200000 doubles
+  com ida e volta; execução sob pt_BR com vírgula decimal; 50000
+  expressões comparadas com o `repr` de Python (algoritmo de Gay).
+

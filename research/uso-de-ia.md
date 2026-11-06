@@ -24,6 +24,7 @@ na IC ou no TCC.
 | 2026-11-06 | Analisador léxico (`src/lexer/`, testes, `mfl --tokens`) | Implementou o código e os testes, verificou com sanitizers e CI | Solicitou a etapa | Testes automatizados; revisão do código pendente |
 | 2026-11-06 | Parser e AST (`src/parser/`, `src/runtime/arena.*`, testes, `mfl --ast`) | Implementou o código e os testes, verificou com sanitizers, fuzz e CI | Autorizou o merge do lexer e solicitou a etapa | Testes automatizados; revisão do código pendente |
 | 2026-11-06 | Verificação semântica (`src/compiler/checker.*`, `src/runtime/units.*`, testes, `mfl --types`) | Implementou o código e os testes, verificou com sanitizers, fuzz e CI | Autorizou o merge do parser e solicitou a etapa | Testes automatizados; revisão do código e dos valores de unidades pendente |
+| 2026-11-06 | Compilador e VM (`src/compiler/chunk.*`, `compiler.*`, `src/vm/`, `src/runtime/number.*`, testes) | Implementou o código e os testes, verificou com testes diferenciais (Python), sanitizers e CI | Testou a versão anterior, autorizou o merge e solicitou a etapa | Testes automatizados e diferenciais; revisão do código pendente |
 
 ## Boas práticas adotadas
 

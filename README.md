@@ -10,11 +10,11 @@ that students, researchers and engineers can write mathematical models, test
 hypotheses and run reproducible simulations — for undergraduate research
 (IC), final-year projects (TCC), graduate work and industrial applications.
 
-> ⚠️ **Early stage.** MFL is in the initial design and scaffolding phase.
-> Most features described below are **planned, not implemented**. Today the
-> repository contains the project structure, design documents, a CMake build
-> and a CLI stub that only reports its version. See
-> [Current status](#current-status).
+> ⚠️ **Early stage (pre-alpha).** The v0.1 core runs a small subset of the
+> language: `let`/`var`, arithmetic with physical units, static dimensional
+> analysis, unit conversion and `print`. Functions, control flow, arrays,
+> the C embedding API and the scientific modules are **planned, not
+> implemented**. See [Current status](#current-status).
 
 ---
 
@@ -37,8 +37,8 @@ let energy = efficiency * voltage * current / speed
 print(energy.to(J/mm))   # expected: 480 J/mm
 ```
 
-*This is the proposed syntax and the first conformance test of the language.
-It is **not executable yet**.*
+*This is the first conformance test of the language. With the v0.1 core it
+runs and prints `480 J/mm` (`./build/mfl examples/welding/heat_input.mfl`).*
 
 ## Scientific goals
 
@@ -60,10 +60,10 @@ It is **not executable yet**.*
 |---------|--------|
 | Lexer | **Implemented** (v0.1) — `mfl --tokens` |
 | Parser and AST | **Implemented** (v0.1 subset) — `mfl --ast` |
-| Bytecode compiler | Planned (v0.1) |
-| Custom stack-based virtual machine | Planned (v0.1) |
+| Bytecode compiler | **Implemented** (v0.1) — `mfl --bytecode` |
+| Custom stack-based virtual machine | **Implemented** (v0.1) — `mfl file.mfl` |
 | `double` precision as the default numeric type | Planned (v0.1) |
-| Physical units and dimensional analysis (SI base + derived) | **Checked before running** (v0.1) — `mfl --types`; unit conversion at run time planned |
+| Physical units and dimensional analysis (SI base + derived) | **Implemented** (v0.1): checked before running (`mfl --types`), exact unit conversion when running |
 | Gradual typing (dynamic by default, optional annotations) | Planned (v0.2+) |
 | Scientific modules (`math`, `units`, `numerical`, `welding`) independent of the core | Planned |
 | Embeddable C API for programs and games | Planned |
@@ -125,10 +125,10 @@ MFLanguage/
 ├── src/
 │   ├── lexer/           Tokenizer (implemented)
 │   ├── parser/          Parser + AST (implemented, v0.1 subset)
-│   ├── compiler/        Semantic checker (implemented); AST → bytecode (planned)
-│   ├── vm/              Bytecode virtual machine (planned)
+│   ├── compiler/        Semantic checker, bytecode compiler (implemented)
+│   ├── vm/              Bytecode virtual machine (implemented)
 │   ├── runtime/         Arena, unit registry and dimensions; values, stdlib glue (planned)
-│   ├── main.c           `mfl` CLI driver (stub)
+│   ├── main.c           `mfl` command-line driver
 │   └── version.c
 ├── include/mfl/         Public C API headers
 ├── modules/             Scientific modules, independent of the core
@@ -152,13 +152,17 @@ ctest --test-dir build --output-on-failure
 ./build/mfl --version
 ```
 
-At this stage the `mfl` binary can print the token stream
-(`./build/mfl --tokens examples/welding/heat_input.mfl`) and the syntax tree
-(`./build/mfl --ast examples/welding/heat_input.mfl`) of a file, and the
-inferred type and dimension of every variable
-(`./build/mfl --types examples/welding/heat_input.mfl`). Running a script
-performs all checks (syntax, names, units, dimensions) and then exits with
-an explicit "execution is not implemented yet" message.
+Run a program:
+
+```bash
+./build/mfl examples/welding/heat_input.mfl       # prints: 480 J/mm
+./build/mfl examples/thermal/steel_properties.mfl
+```
+
+Inspect the stages: `--tokens` (lexer), `--ast` (parser), `--types`
+(inferred dimensions), `--bytecode` (compiled code). The v0.1 subset
+covers `let`, `var`, assignment, arithmetic with physical units, unit
+conversion and `print`; functions and control flow come in v0.2.
 
 ## Roadmap
 
@@ -196,10 +200,11 @@ materials, welding, manufacturing and numerical methods.
 - ✅ Lexer with unit tests and token-stream golden tests
 - ✅ Parser + AST for the v0.1 subset (`let`, `var`, assignment, expressions, quantity literals), with error recovery
 - ✅ Semantic checker: names, unit registry, static dimensional analysis (`mfl --types`)
-- ⏳ Compiler, VM (execution) — **not started**
+- ✅ Bytecode compiler and VM: programs run; conformance test `480 J/mm` passes
+- ⏳ Functions, control flow, arrays (v0.2); C embedding API; numerical module
 - ⏳ Units and dimensional analysis — **design only**
 - ⏳ Numerical and welding modules — **design only**
-- ⏳ The example programs in `examples/` **cannot be executed yet**
+- ✅ The example programs in `examples/` run (v0.1 subset)
 
 ## License
 
