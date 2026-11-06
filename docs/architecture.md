@@ -27,7 +27,7 @@ source ─▶ Lexer ─▶ tokens ─▶ Parser ─▶ AST ─▶ Resolver/Check
 |-------|-----------|----------------|
 | Lexer | `src/lexer/` | UTF-8 source → token stream with line/column |
 | Parser | `src/parser/` | Pratt/recursive-descent parser → AST; unit-expression sub-grammar |
-| Checker | `src/compiler/` | Scope resolution, static dimension checks where types are known |
+| Checker | `src/compiler/checker.c` | Name resolution, unit resolution (`src/runtime/units.c`), static types and dimensions; annotates the AST with types and SI scale factors (**implemented**) |
 | Compiler | `src/compiler/` | AST → bytecode chunk + constant pool |
 | VM | `src/vm/` | Dispatch loop, call frames, value stack |
 | Runtime | `src/runtime/` | Values, objects, GC, unit registry, built-ins, module loader |

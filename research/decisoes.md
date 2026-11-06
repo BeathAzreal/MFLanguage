@@ -166,3 +166,47 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
   aparecer em uma expressão (por exemplo, `fn` anônima), esta regra precisa
   ser revista.
 
+## ADR-016 — Análise dimensional estática (antes da execução)
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Contexto:** o ADR-003 previa verificar dimensões em tempo de execução.
+  Na v0.1 não há funções nem desvios, então o tipo de cada expressão é
+  conhecido antes de rodar.
+- **Decisão:** um verificador semântico infere tipo e dimensão de todas as
+  expressões e recusa o programa inconsistente antes da execução. A
+  verificação em tempo de execução continua prevista para quando houver
+  tipagem gradual (funções sem anotação, v0.2+).
+- **Justificativa:** o erro aparece antes de qualquer simulação longa e
+  aponta a linha. Isso é importante para estudantes e para resultados
+  científicos.
+
+## ADR-017 — Uma `var` mantém o tipo e a dimensão do valor inicial
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Alternativas:** permitir que a variável mude de tipo (dinâmico).
+- **Decisão:** `var T = 300 K` seguido de `T = 5 s` é erro.
+- **Justificativa:** uma grandeza física não muda de natureza ao longo de
+  um modelo. Isso também mantém a análise da ADR-016 simples e exata.
+
+## ADR-018 — Regras estritas: sem "verdadeiro" numérico, sem comparação entre tipos
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** `and`, `or` e `not` exigem `Bool`. `==` exige o mesmo tipo
+  (e a mesma dimensão), exceto comparação com `nil`. Expoente de grandeza
+  com dimensão deve ser um inteiro literal.
+- **Justificativa:** comparações como `1 == "a"` são sempre falsas e quase
+  sempre um engano. O expoente literal garante que a dimensão do resultado
+  seja conhecida.
+- **Consequência:** `(2 m)^n`, com `n` variável, não é aceito na v0.1.
+
+## ADR-019 — Dimensões exibidas em unidades de base SI; `degC` adiado
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** mensagens e `mfl --types` mostram dimensões em unidades de
+  base (`kg*m/s^2`), nunca um nome derivado. `degC` gera "ainda não
+  suportado; use K". Prefixos valem também para `L` (`mL`).
+- **Justificativa:** uma mesma dimensão tem vários nomes (J/m e N), e
+  mostrar "N" para uma energia por comprimento confundiria. A temperatura
+  com deslocamento (°C) exige regras próprias (`docs/units.md` §5), ainda
+  em aberto.
+

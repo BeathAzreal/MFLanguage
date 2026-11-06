@@ -24,9 +24,11 @@
  *   unit_atom  := IDENT | '(' unit ')'
  *
  * A unit starts only with an IDENT right after a NUMBER. Inside a unit,
- * '*' and '/' continue the unit when followed by IDENT or '(' (so
- * `5 mm/s` is one quantity), and end it otherwise (`5 mm * 2` is
- * (5 mm) * 2). Write `(5 mm) / t` to divide a quantity by a variable.
+ * '*' and '/' continue the unit when followed by IDENT, or by '(' whose
+ * next token is IDENT or '(' (so `5 mm/s` and `45 W/(m*K)` are single
+ * quantities); otherwise they end it (`5 mm * 2` is (5 mm) * 2, and
+ * `5 m / (2 s)` divides by the parenthesised quantity). Write
+ * `(5 mm) / t` to divide a quantity by a variable.
  *
  * Keywords of later versions (fn, if, while, for, return, import) produce
  * a "not supported yet" error; the parser skips the whole construct,
@@ -45,18 +47,11 @@
 
 #include "parser/ast.h"
 #include "runtime/arena.h"
+#include "runtime/diagnostic.h"
 
 #define MFL_PARSE_MAX_DIAGNOSTICS 50
 #define MFL_PARSE_MAX_DEPTH 200
 
-typedef struct MflDiagnostic MflDiagnostic;
-
-struct MflDiagnostic {
-    int            line;
-    int            column;
-    const char    *message; /* stored in the result's arena */
-    MflDiagnostic *next;
-};
 
 typedef struct {
     MflArena       arena;

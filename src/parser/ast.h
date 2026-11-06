@@ -19,6 +19,7 @@
 #include <stddef.h>
 
 #include "lexer/lexer.h"
+#include "runtime/units.h"
 
 typedef enum {
     MFL_EXPR_ERROR,    /* placeholder produced after a syntax error */
@@ -42,11 +43,29 @@ typedef struct {
     size_t      length;
 } MflText;
 
+/* Static type, filled in by the semantic checker (src/compiler/checker). */
+typedef enum {
+    MFL_TYPE_UNCHECKED = 0, /* the checker has not visited the node */
+    MFL_TYPE_ERROR,         /* an error was reported; suppresses cascades */
+    MFL_TYPE_NUMBER,        /* real number; dim says which quantity (none = plain Number) */
+    MFL_TYPE_BOOL,
+    MFL_TYPE_STRING,
+    MFL_TYPE_NIL,
+    MFL_TYPE_UNIT           /* a unit expression (quantity literal unit, .to argument) */
+} MflTypeKind;
+
+typedef struct {
+    MflTypeKind kind;
+    MflDim      dim; /* for NUMBER and UNIT */
+} MflType;
+
 struct MflExpr {
     MflExprKind kind;
     int         line;   /* position of the token that defines the node */
     int         column; /* (operator token for unary/binary) */
     MflExpr    *next;   /* next argument in a call's argument list */
+    MflType     type;   /* set by the checker */
+    double      unit_scale; /* UNIT-typed roots: factor to coherent SI */
     union {
         MflText text;
         int     boolean;

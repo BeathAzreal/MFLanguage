@@ -115,6 +115,32 @@ and scanning continues, so several errors are reported at once:
 
 A `Number` is semantically a dimensionless `Quantity`.
 
+### 4.0 Static checking in v0.1
+
+> **Implemented** (semantic checker, `src/compiler/checker.c`; inspect with
+> `mfl --types file.mfl`).
+
+v0.1 has no user functions and no control flow, so the type of every
+expression, including the **dimension** of every quantity, is known before
+the program runs, and all checks below are done before execution:
+
+| Rule | Example error |
+|------|---------------|
+| Names must be declared before use; no redeclaration | `undefined variable 'y'`, `'U' is already declared at 2:1` |
+| `let` bindings cannot be assigned | `cannot assign to 'U': it is declared with 'let' …` |
+| A `var` keeps the type and dimension of its initial value | `cannot assign Quantity[s] to 'T', which is a Quantity[K] …` |
+| `+ - %` and `< <= > >=` need numbers with equal dimensions | `cannot add Quantity[kg*m^2/(s^3*A)] and Quantity[A]: dimensions differ` |
+| `* /` combine dimensions | `W/(m*K) / (kg/m^3 * J/(kg*K))` → `Quantity[m^2/s]` |
+| `^` needs a dimensionless exponent; if the base has a dimension, an integer literal | `the exponent of a Quantity[m] must be an integer literal …` |
+| `== !=` need the same type (numbers: same dimension); anything may be compared with `nil` | `cannot compare Number and String` |
+| `and or not` need `Bool` (no "truthy" numbers) | `'not' needs a Bool, found Number` |
+| `.to(u)` / `.value_in(u)` need a unit with the same dimension | `cannot convert Quantity[m/s] to a unit of dimension kg*m/s^2` |
+| `print` is the only callable; it cannot be redefined or used as a value | `undefined function 'f' (v0.1 has only the built-in 'print')` |
+
+Types are written `Number` (dimensionless), `Quantity[<SI base units>]`,
+`Bool`, `String`, `Nil`. Dimensions are always shown in SI base units
+(`kg*m/s^2`), because one dimension can have several names (J/m and N).
+
 ### 4.1 Gradual typing *(v0.2+)*
 
 Annotations are optional. Without them, checks happen at run time. With them,
@@ -159,7 +185,8 @@ Binding rules (the parser applies them; `mfl --ast` shows the result):
 | Source | Tree | Why |
 |--------|------|-----|
 | `5 mm/s` | `(quantity 5 (/ mm s))` | `/` followed by a name continues the unit |
-| `45 W/(m*K)` | `(quantity 45 (/ W (* m K)))` | `(` after `/` or `*` opens a unit group |
+| `45 W/(m*K)` | `(quantity 45 (/ W (* m K)))` | `(` + name after `/` or `*` opens a unit group |
+| `5 m / (2 s)` | `(/ (quantity 5 m) (quantity 2 s))` | `(` + number: ordinary division |
 | `2 m^-2` | `(quantity 2 (^ m (- 2)))` | integer exponent, optional sign |
 | `5 mm * 2` | `(* (quantity 5 mm) 2)` | `*` followed by a number ends the unit |
 | `5 mm / t` | `(quantity 5 (/ mm t))` | **`t` is read as a unit**, not a variable |
@@ -182,8 +209,12 @@ instead of `50 %`.
 ```mfl
 energy.to(J/mm)       # convert to a compatible unit; error if dimensions differ
 energy.value_in(J/mm) # plain Number in the given unit
-energy.dim            # dimension descriptor, e.g. M·T⁻²
+energy.dim            # dimension descriptor (planned, not in v0.1)
 ```
+
+The argument of `.to`/`.value_in` is read as a **unit expression** (unit
+names, `*`, `/`, integer `^`), not as an ordinary expression. Dimension
+compatibility is checked before running (§4.0).
 
 ## 6. Declarations
 

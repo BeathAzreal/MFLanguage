@@ -41,6 +41,7 @@ português, prontos para virar texto de relatório, monografia ou artigo.
 | 2026-11-05 | [Criação do projeto](diario/2026-11-05_criacao-do-projeto.md) | Repositório, estrutura, documentação, CMake, CI, branches |
 | 2026-11-06 | [Analisador léxico](diario/2026-11-06_lexer.md) | Lexer, `mfl --tokens`, testes unitários e de referência, sanitizers |
 | 2026-11-06 | [Parser e AST](diario/2026-11-06_parser.md) | Parser, `mfl --ast`, recuperação de erros, regra de palavra-chave de comando |
+| 2026-11-06 | [Verificação semântica](diario/2026-11-06_verificacao-semantica.md) | Registro de unidades, análise dimensional estática, `mfl --types` |
 
 ## Possíveis enquadramentos acadêmicos
 
