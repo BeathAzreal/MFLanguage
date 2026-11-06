@@ -1,6 +1,6 @@
 # Embedding MFL in a host program
 
-> **Status:** implemented (v0.2; compatible with v0.1 hosts). Public header:
+> **Status:** implemented (v0.3; compatible with v0.1 and v0.2 hosts). Public header:
 > [`include/mfl/mfl.h`](../include/mfl/mfl.h). Complete example:
 > [`examples/embedding/heat_input_host.c`](../examples/embedding/heat_input_host.c).
 
@@ -85,6 +85,8 @@ models that run only once.
 | `MFL_ERR_NOT_RUN` | nothing has run successfully yet |
 | `MFL_ERR_INTERNAL` | a bug in MFL; please report it |
 | `MFL_ERR_RUNTIME` | the program failed while running (v0.2; appended at the end of the enum, so existing values are unchanged) |
+| `MFL_ERR_SIMULATION` | (v0.3) a simulation cannot run: missing parameter, unstable time step, size limit |
+| `MFL_ERR_IO` | (v0.3) an export file could not be written; no metadata file is left |
 
 ## 5. Example output
 
@@ -98,7 +100,32 @@ MIG/MAG, conformance     20.0  150.0       5.0      2.400        0.480
 MIG/MAG, thick plate     28.0  280.0       4.0      6.272        1.568
 ```
 
-## 6. Not available yet
+## 6. Imports and simulations (v0.3)
+
+- `import numerical`, `import math`, `import heat` work in every script.
+  `import "file.mfl"` is **disabled by default** in the API (a host
+  running untrusted scripts never opens files); enable it with
+  `mfl_set_file_imports(S, 1)`. Paths are then resolved relative to the
+  directory of the `source_name` passed to `mfl_eval` /
+  `mfl_script_compile`, exactly like the `mfl` command. Errors in imported
+  files name those files.
+- **1D heat conduction from C**: `mfl_heat1d_new`, `mfl_heat1d_set(h,
+  "length", 100, "mm")`, ..., `mfl_heat1d_run`, then read results by
+  sample and node (`mfl_heat1d_time`, `mfl_heat1d_position`,
+  `mfl_heat1d_temperature`, `mfl_heat1d_profile`,
+  `mfl_heat1d_first_time_reaching`) and `mfl_heat1d_export`. A script's
+  last `heat.run()` is available as `mfl_state_heat1d(S)`.
+- **Ownership**: `mfl_heat1d_new` objects belong to the host (free them
+  with `mfl_heat1d_free` before the state); `mfl_state_heat1d` results
+  belong to the state and are valid until its next run; profile pointers
+  are valid until the next successful run of their object or its
+  destruction. Details in the header and in `docs/heat-conduction.md` §9.
+- Example: `examples/embedding/heat_bar_host.c` (`mfl_heat_host`) runs the
+  CLI case three ways and checks they agree within 1e‑9 K (measured 0 K).
+- Fix in v0.3: a top-level degC variable read with `mfl_get_number(S,
+  name, "K", &v)` now includes the 273.15 K offset.
+
+## 7. Not available yet
 
 - A host-supplied allocator (only a memory limit for now).
 - Strings, booleans and arrays as inputs/outputs through the API (scripts

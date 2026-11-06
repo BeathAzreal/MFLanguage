@@ -406,6 +406,21 @@ if(MFL_BUILD_TESTS)
         COMMAND check_heat_csv ${MFL_OUT}/sine.csv ${MFL_OUT}/sine_meta.json --sine 300 50 0.035)
     set_tests_properties(export_sine_analytical PROPERTIES FIXTURES_REQUIRED sine_csv)
 
+    # The small export kept in the repository is reproduced byte for byte.
+    mfl_add_export_test(export_small_bar 0 "exported 6 samples x 5 nodes"
+        "-DARGS=examples/thermal/small_bar.mfl|--csv|${MFL_OUT}/small_bar.csv"
+        -DMKDIR=${MFL_OUT}
+        "-DMUST_EXIST=${MFL_OUT}/small_bar.csv|${MFL_OUT}/small_bar.json")
+    set_tests_properties(export_small_bar PROPERTIES FIXTURES_SETUP small_csv)
+    add_test(NAME export_small_bar_reproduced
+        COMMAND ${CMAKE_COMMAND} -E compare_files ${MFL_OUT}/small_bar.csv
+            ${PROJECT_SOURCE_DIR}/examples/thermal/output/small_bar.csv)
+    set_tests_properties(export_small_bar_reproduced PROPERTIES FIXTURES_REQUIRED small_csv)
+    add_test(NAME export_small_bar_check
+        COMMAND check_heat_csv ${MFL_OUT}/small_bar.csv ${MFL_OUT}/small_bar.json
+            --end 373.15 0 --value 0 0.01 293.15 0)
+    set_tests_properties(export_small_bar_check PROPERTIES FIXTURES_REQUIRED small_csv)
+
     # Write failures: exit code 4, no metadata (the completion marker) and
     # no temporary files left.
     mfl_add_export_test(export_fail_missing_dir 4

@@ -1,6 +1,8 @@
 # Scientific Validation Plan — Draft 0
 
-> **Status:** plan. None of the stages below has been executed yet.
+> **Status:** stage 1 (heat input, v0.1/v0.2) and the 1D part of stages 3–4
+> (explicit solver verified against the analytical slab solution, v0.3,
+> `heat-conduction.md` §11) are done. The other stages are plans.
 
 MFL's first scientific domain is **arc welding**, specifically heat transfer
 in **MIG/MAG (GMAW)**. Validation follows the usual distinction:

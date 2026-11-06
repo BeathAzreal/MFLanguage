@@ -168,8 +168,8 @@ static void test_analytical(int print_table)
         CHECK(order > 1.9 && order < 2.1);
     }
     if (print_table) {
-        printf("| nodes | dx (mm) | dt (s) | max error, all nodes and samples (K) | x = L/4, t = %g s (K) | x = L/2, t = %g s (K) | x = L/2, t = %.4g s (K) | observed order (max error) |\n",
-               T_END_REF, T_END_REF, r[0].mid_time);
+        printf("| nodes | dx (mm) | dt (s) | max error, all nodes and samples (K) | x = L/4, t = %g s (K) | x = L/2, t = %g s (K) | x = L/2, sample nearest t = %g s (K) | observed order (max error) |\n",
+               T_END_REF, T_END_REF, T_END_REF / 2);
         printf("|---|---|---|---|---|---|---|---|\n");
         for (i = 0; i < 3; i++) {
             char ord[32] = "-";

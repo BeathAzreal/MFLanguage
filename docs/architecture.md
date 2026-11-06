@@ -1,8 +1,8 @@
 # MFL Architecture — Draft 0
 
-> **Status:** sections 2–4, 6 and 9 are implemented (v0.2: lexer, parser,
-> checker, compiler, VM, embedding API); sections 5, 7 and 8 (modules,
-> WebAssembly, library integration) are still plans.
+> **Status:** sections 2–6 and 9 are implemented (v0.3: lexer, parser,
+> loader, checker, compiler, VM, C modules, numerical library, embedding
+> API); sections 7 and 8 (WebAssembly, library integration) are plans.
 
 ## 1. Goals and constraints
 
@@ -101,18 +101,39 @@ typedef struct { const char *text; MflScale scale; MflDim dim; unsigned char aff
 
 ## 5. Module system
 
-- Scientific modules (`modules/math`, `units`, `numerical`, `welding`) are
-  **separate from the core** and register native functions through a small
-  native-module API:
+> **Implemented** (v0.3). Spec: `docs/language-spec.md` §13.
 
-```c
-typedef MflValue (*MflNativeFn)(MflState *S, int argc, const MflValue *argv);
-int mfl_register_module(MflState *S, const char *name,
-                        const MflNativeReg *fns, size_t count);
+```
+main.mfl ─▶ Loader (src/compiler/loader.c) ─▶ one program, files in dependency order
+                │  import "file.mfl": resolve, read once, detect cycles
+                ▼
+            Checker: per-file visibility, `import name` of C modules,
+                     calls typed from native descriptors
+                ▼
+            Compiler: CALL_NATIVE f n ─▶ VM ─▶ src/modules/natives.c (binding)
+                                                   │ SI doubles only
+                                                   ▼
+                                     modules/numerical/ (library mfl_numerical)
+                                     vector.c · heat1d.c · heat1d_export.c
 ```
 
-- Modules may also be written in MFL itself once functions exist.
-- The core binary can be built without any module (minimal embed size).
+- **Three layers.** `modules/numerical/` is plain C11 on SI doubles (no
+  parser, compiler or VM types; built as its own static library and tested
+  on its own). `src/modules/` is the binding: a constant descriptor table
+  (parameter kinds and dimensions, result kind) used by the checker before
+  running and re-checked on the values at run time, plus the conversion
+  of values to SI. The VM only knows the opcode `CALL_NATIVE`.
+- **State.** C modules have no global state. The `heat` module keeps its
+  configuration and last results in an `MflNativeSession` owned by the
+  caller of the VM (the `mfl` command or the embedding API) and passed to
+  `mfl_vm_execute_ex`; the caller reads the results after the run.
+- **Files.** Every statement and instruction records its file, so
+  diagnostics and run-time errors name the imported file.
+- **Reproducibility.** The core is compiled with `-ffp-contract=off` (no
+  FMA contraction), so the solver gives bit-identical results on x86-64
+  and ARM64.
+- Not yet: modules written in MFL and imported by name; a host API to
+  register new C modules.
 
 ## 6. Embedding C API
 
