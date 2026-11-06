@@ -257,6 +257,7 @@ if(MFL_BUILD_TESTS)
         mfl_add_program_test(error_${base} tests/language/errors/${base}.mfl
             tests/language/errors/${base}.stdout tests/language/errors/${base}.stderr 1)
     endforeach()
+    set_tests_properties(error_rt_range_step PROPERTIES TIMEOUT 5)
 
     # v0.2 acceptance demonstration (examples/welding/heat_input_v02.mfl).
     set(MFL_DEMO examples/welding/heat_input_v02.mfl)

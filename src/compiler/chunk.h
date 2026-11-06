@@ -128,6 +128,7 @@ typedef struct {
     X(CHECK_TYPE, "CHECK_TYPE", 2)     /* t, c: top must match type t (context c)     */ \
     X(CHECK_LIKE_GLOBAL, "CHECK_LIKE_GLOBAL", 2) /* g, c: top must match globals[g]   */ \
     X(CHECK_LIKE_LOCAL, "CHECK_LIKE_LOCAL", 2)   /* l, c: top must match slot l       */ \
+    X(RANGE_STEP, "RANGE_STEP", 0)                                                      \
     X(HALT, "HALT", 0)
 
 typedef enum {

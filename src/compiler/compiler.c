@@ -774,8 +774,7 @@ static void compile_stmt(Compiler *c, const MflStmt *s)
             EMIT(c, MFL_OP_POP, 0, s);
             compile_block(c, s->body);
             EMIT(c, MFL_OP_GET_LOCAL, (unsigned)s->slot, s);
-            EMIT(c, MFL_OP_CONST, add_constant(c, one, s->value), s);
-            EMIT(c, MFL_OP_ADD, 0, s);
+            EMIT(c, MFL_OP_RANGE_STEP, 0, s);
             EMIT(c, MFL_OP_SET_LOCAL, (unsigned)s->slot, s);
         } else {
             /* for x in array:  arr = e; idx = 0; while idx < len(arr) { x = arr[idx]; body; idx += 1 } */
