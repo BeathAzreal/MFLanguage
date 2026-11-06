@@ -24,6 +24,8 @@ option(MFL_BUILD_EXAMPLES "Build the C embedding example" ON)
 # ---------------------------------------------------------------------------
 add_library(mfl_numerical STATIC
     modules/numerical/vector.c
+    modules/numerical/heat1d.c
+    src/runtime/number.c
 )
 target_include_directories(mfl_numerical
     PUBLIC  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/modules/numerical>
@@ -41,7 +43,6 @@ add_library(mfl_core
     src/parser/parser.c
     src/runtime/arena.c
     src/runtime/units.c
-    src/runtime/number.c
     src/compiler/checker.c
     src/compiler/chunk.c
     src/compiler/compiler.c
@@ -170,6 +171,10 @@ if(MFL_BUILD_TESTS)
     target_link_libraries(test_vector PRIVATE mfl_numerical)
     mfl_set_warnings(test_vector)
     add_test(NAME numerical_vector COMMAND test_vector)
+    add_executable(test_heat1d tests/numerical/test_heat1d.c)
+    target_link_libraries(test_heat1d PRIVATE mfl_numerical)
+    mfl_set_warnings(test_heat1d)
+    add_test(NAME numerical_heat1d COMMAND test_heat1d)
 
     foreach(t number vm)
         add_executable(test_${t} tests/unit/test_${t}.c)
