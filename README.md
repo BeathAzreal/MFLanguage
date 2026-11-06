@@ -63,7 +63,7 @@ It is **not executable yet**.*
 | Bytecode compiler | Planned (v0.1) |
 | Custom stack-based virtual machine | Planned (v0.1) |
 | `double` precision as the default numeric type | Planned (v0.1) |
-| Physical units and dimensional analysis (SI base + derived) | Planned (v0.1 core, v0.2 full) |
+| Physical units and dimensional analysis (SI base + derived) | **Checked before running** (v0.1) — `mfl --types`; unit conversion at run time planned |
 | Gradual typing (dynamic by default, optional annotations) | Planned (v0.2+) |
 | Scientific modules (`math`, `units`, `numerical`, `welding`) independent of the core | Planned |
 | Embeddable C API for programs and games | Planned |
@@ -125,9 +125,9 @@ MFLanguage/
 ├── src/
 │   ├── lexer/           Tokenizer (implemented)
 │   ├── parser/          Parser + AST (implemented, v0.1 subset)
-│   ├── compiler/        AST → bytecode (planned)
+│   ├── compiler/        Semantic checker (implemented); AST → bytecode (planned)
 │   ├── vm/              Bytecode virtual machine (planned)
-│   ├── runtime/         Arena allocator; values, units, stdlib glue (planned)
+│   ├── runtime/         Arena, unit registry and dimensions; values, stdlib glue (planned)
 │   ├── main.c           `mfl` CLI driver (stub)
 │   └── version.c
 ├── include/mfl/         Public C API headers
@@ -154,9 +154,11 @@ ctest --test-dir build --output-on-failure
 
 At this stage the `mfl` binary can print the token stream
 (`./build/mfl --tokens examples/welding/heat_input.mfl`) and the syntax tree
-(`./build/mfl --ast examples/welding/heat_input.mfl`) of a file. Running a
-script checks its syntax and then exits with an explicit "execution is not
-implemented yet" message.
+(`./build/mfl --ast examples/welding/heat_input.mfl`) of a file, and the
+inferred type and dimension of every variable
+(`./build/mfl --types examples/welding/heat_input.mfl`). Running a script
+performs all checks (syntax, names, units, dimensions) and then exits with
+an explicit "execution is not implemented yet" message.
 
 ## Roadmap
 
@@ -190,10 +192,11 @@ materials, welding, manufacturing and numerical methods.
 
 - ✅ Repository structure and design documents
 - ✅ CMake build (C11) and CI workflow (Linux/macOS/Windows)
-- ✅ `mfl` CLI (`--version`, `--help`, `--tokens`, `--ast`; `mfl file.mfl` checks syntax)
+- ✅ `mfl` CLI (`--version`, `--help`, `--tokens`, `--ast`, `--types`; `mfl file.mfl` runs all checks)
 - ✅ Lexer with unit tests and token-stream golden tests
 - ✅ Parser + AST for the v0.1 subset (`let`, `var`, assignment, expressions, quantity literals), with error recovery
-- ⏳ Semantic checks (names, units, dimensions), compiler, VM — **not started**
+- ✅ Semantic checker: names, unit registry, static dimensional analysis (`mfl --types`)
+- ⏳ Compiler, VM (execution) — **not started**
 - ⏳ Units and dimensional analysis — **design only**
 - ⏳ Numerical and welding modules — **design only**
 - ⏳ The example programs in `examples/` **cannot be executed yet**

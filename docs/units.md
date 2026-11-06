@@ -34,6 +34,9 @@ units except affine temperatures, `offset = 0`.
 
 ## 3. Unit registry for v0.1
 
+> **Implemented** (`src/runtime/units.c`), with the differences noted
+> below: prefixes also apply to `L`; `degC` and `%` are not available yet.
+
 **Base:** `m, kg, s, A, K, mol, cd`, plus `g`.
 
 **Derived (SI, coherent):**
@@ -49,9 +52,12 @@ units except affine temperatures, `offset = 0`.
 | Ω (`ohm`) | ohm | V·A⁻¹ |
 | Hz | hertz | s⁻¹ |
 
-**Prefixes:** `p n u (µ) m c d k M G` applicable to any SI symbol
-(`mm`, `kJ`, `MPa`, `kW`, `GPa`, `us`…). Ambiguities are resolved by
-preferring an exact registered symbol first (`min` = minute, not milli-inch).
+**Prefixes:** `p n u m c d k M G` (write `u` for micro: `µ` is not allowed
+in v0.1 code), applicable to every SI symbol above except `kg` (use `g`:
+`mg`, `ug`), and to `L` (`mL`). Not to `min`, `h`, `bar`. One prefix only
+(`mmm` is unknown). Ambiguities are resolved by preferring an exact
+registered symbol first (`min` = minute, not milli-inch; `cd` = candela).
+Symbols are case-sensitive (`Pa` pascal, `pA` picoampere).
 
 **Non-SI accepted in welding/materials:**
 
@@ -61,8 +67,8 @@ preferring an exact registered symbol first (`min` = minute, not milli-inch).
 | h | 3600 s |
 | L | 10⁻³ m³ |
 | bar | 10⁵ Pa |
-| degC | affine, see §5 |
-| % | 0.01 (dimensionless) |
+| degC | affine, see §5 — **not available in v0.1** (error: use K) |
+| % | 0.01 (dimensionless) — **not available in v0.1** (`%` is the remainder operator) |
 
 Common welding units are expressible directly: `kJ/mm`, `J/mm`, `mm/s`,
 `m/min`, `L/min` (shielding gas flow), `W/(m*K)` (conductivity),
