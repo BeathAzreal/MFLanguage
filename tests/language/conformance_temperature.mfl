@@ -1,0 +1,26 @@
+# Conformance (v0.2): absolute temperatures (degC) and differences (K, delta_degC).
+# docs/units.md section 5.
+
+# Absolute temperature conversion: T[K] = T[degC] + 273.15
+print((20 degC).to(K), (0 degC).to(K), (273.15 K).to(degC), (1500 K).to(degC))
+print((25 degC).value_in(K), (300 K).value_in(degC))
+
+# Difference conversion: 1 delta_degC = 1 K, no offset.
+let rise = (80 degC) - (20 degC)
+print(rise, rise.to(delta_degC), (10 delta_degC).to(K), (5 K).value_in(delta_degC))
+
+# Absolute + difference stays absolute.
+print(20 degC + 5 K, 20 degC + 5 delta_degC, 5 K + 20 degC, 100 degC - 30 K)
+
+# Comparisons between absolute temperatures, in any temperature unit.
+print(20 degC < 300 K, 27 degC > 300 K, 1500 degC > 1773 K, 0 degC == 273.15 K)
+
+# Welding: cooling time window between 800 degC and 500 degC (t8/5).
+let t_peak = 1450 degC
+let t8 = 800 degC
+let t5 = 500 degC
+print("t8/5 window:", (t8 - t5).to(delta_degC), "; below peak:", t_peak - t8)
+
+# percent is a dimensionless unit (`%` remains the remainder operator).
+let eta = 80 percent
+print(eta, eta.value_in(percent), 0.8 * 20 V * 150 A == eta * 20 V * 150 A, 7 % 3)

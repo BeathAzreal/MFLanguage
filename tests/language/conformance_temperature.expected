@@ -1,0 +1,7 @@
+293.15 K 273.15 K 0 degC 1226.85 degC
+298.15 26.850000000000023
+60 K 60 delta_degC 10 K 5
+25 degC 25 degC 25 degC 70 degC
+true true true true
+t8/5 window: 300 delta_degC ; below peak: 650 K
+80 percent 80 true 1
