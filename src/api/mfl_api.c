@@ -909,7 +909,22 @@ static MflStatus to_si(MflState *S, const char *what, double value, const char *
     if (given != NULL) {
         char num[64];
         mfl_number_format(value, num, sizeof num);
-        snprintf(given, given_size, "%s %s", num, unit);
+        /* "<value> <unit>", cut to given_size (the text is only recorded in metadata) */
+        size_t pos = 0;
+        const char *parts[3];
+        int k;
+        parts[0] = num;
+        parts[1] = " ";
+        parts[2] = unit != NULL ? unit : "";
+        for (k = 0; k < 3; k++) {
+            const char *c;
+            for (c = parts[k]; *c != '\0' && pos + 1 < given_size; c++) {
+                given[pos++] = *c;
+            }
+        }
+        if (given_size > 0) {
+            given[pos] = '\0';
+        }
     }
     return MFL_OK;
 }
