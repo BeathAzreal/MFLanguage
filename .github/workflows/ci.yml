@@ -131,6 +131,32 @@ jobs:
           grep -q '"export_complete": true' out/bar_heated_end.json
           ./bin/mfl_heat_host examples/thermal/bar_heated_end.mfl out/bar_heated_end.csv
 
+  # MFL in the browser: WebAssembly build (Zig's clang + WASI libc), checked
+  # in Node against the same golden files as the native CLI.
+  wasm:
+    name: WebAssembly (browser build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Zig (clang with a WASI libc)
+        run: python3 -m pip install ziglang==0.15.1
+      - name: Build
+        run: wasm/build.sh
+      - name: Golden tests on the WebAssembly build
+        run: node wasm/test.mjs
+      - name: Upload the browser build
+        uses: actions/upload-artifact@v4
+        with:
+          name: mfl-wasm
+          path: |
+            wasm/dist/mfl.wasm
+            wasm/mfl.js
+            wasm/README.md
+          if-no-files-found: error
+
   # AddressSanitizer + UndefinedBehaviorSanitizer (and LeakSanitizer) over
   # the whole suite: solver, API, error and out-of-memory paths.
   sanitizers:

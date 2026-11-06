@@ -145,7 +145,7 @@ is in [`examples/thermal/output/`](examples/thermal/output/).
 | 1D transient heat conduction (FTCS), CSV/JSON export, CLI and C API | **Implemented** (v0.3) — [`docs/heat-conduction.md`](docs/heat-conduction.md) |
 | `welding` module (moving sources, 2D/3D) | Planned |
 | Embeddable C API for programs and games | **Implemented** — [`docs/embedding.md`](docs/embedding.md) |
-| WebAssembly target | Future |
+| WebAssembly target (runs in the browser, same results as the CLI) | **Implemented** — [`wasm/README.md`](wasm/README.md) |
 | Bindings to C/C++/Fortran scientific libraries | Future |
 
 MFL has **no dependency** on React, JavaScript, Unity, Unreal or any game or
@@ -275,7 +275,7 @@ Inspect the stages: `--tokens` (lexer), `--ast` (parser), `--types`
 | **v0.3.x** | Implicit schemes (backward Euler, Crank–Nicolson), convection boundaries, ODE integrators |
 | **v0.4** | C embedding API stabilised; experiment records (parameters, units, method, results) |
 | **v0.5** | 2D/3D moving heat sources, Goldak model, experimental comparison |
-| **later** | WebAssembly build, C/C++/Fortran library bindings, game integration |
+| **later** | C/C++/Fortran library bindings, game integration |
 
 ## Contributing
 

@@ -2,14 +2,14 @@
 
 > **Status:** sections 2–6 and 9 are implemented (v0.3: lexer, parser,
 > loader, checker, compiler, VM, C modules, numerical library, embedding
-> API); sections 7 and 8 (WebAssembly, library integration) are plans.
+> API); section 7 (WebAssembly) is implemented too; section 8 (library integration) is a plan.
 
 ## 1. Goals and constraints
 
 | Constraint | Decision |
 |------------|----------|
 | Language | C11, standard library + `libm` only |
-| Platforms | Linux, macOS, Windows; WebAssembly later (Emscripten/WASI) |
+| Platforms | Linux, macOS, Windows; WebAssembly (wasm32-wasi, browser and Node) |
 | Numeric default | IEEE-754 binary64 (`double`) |
 | Embeddability | No global state; everything hangs off an `MflState*` |
 | Dependencies | No React/JS/Unity/Unreal/graphics engine; no third-party C libs in the core |
@@ -168,7 +168,18 @@ returned as codes + message, all strings UTF-8, output callback for
 script (so dimensional analysis knows them) and enter the VM as the first
 global slots; after a run, every global is copied back to the state.
 
-## 7. WebAssembly (future)
+## 7. WebAssembly
+
+> **Implemented** (v0.3): `wasm/` (build script, loader, tests) and
+> `src/wasm/mfl_wasm.c`. See [`wasm/README.md`](../wasm/README.md).
+
+The core builds unchanged for `wasm32-wasi` (reactor). The VM never
+touches files, so the browser build needs no WASI functions at all: files
+for `import` come from an in-memory file system, and output goes to one
+imported JavaScript function. The design constraints below are why this
+worked without changes to the interpreter.
+
+### Original plan
 
 The same C sources will compile with Emscripten or WASI-SDK. Requirements
 this imposes now: no threads in the core, no direct filesystem dependency
