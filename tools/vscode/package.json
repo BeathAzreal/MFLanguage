@@ -1,0 +1,34 @@
+{
+  "name": "mfl-language",
+  "displayName": "MFL Language",
+  "publisher": "mfl-local",
+  "description": "Editor support for Materials & Manufacturing Language (.mfl)",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "mfl",
+        "aliases": [
+          "MFL"
+        ],
+        "extensions": [
+          ".mfl"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "mfl",
+        "scopeName": "source.mfl",
+        "path": "./syntaxes/mfl.tmLanguage.json"
+      }
+    ]
+  }
+}
