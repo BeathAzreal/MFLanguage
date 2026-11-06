@@ -409,6 +409,8 @@ if(MFL_BUILD_TESTS)
         "center reaches 150 degC at the sample t = 90 s [|] previous sample: 80 s -> 146[.][0-9]+ degC\ncenter does not reach 600 degC within 600 s")
     mfl_add_run_test(run_bar_heated_end examples/thermal/bar_heated_end.mfl
         tests/language/run/bar_heated_end.expected)
+    # Physical model of the virtual calorimetry lab (examples/lab).
+    mfl_add_run_test(run_lab_model examples/lab/check_model.mfl tests/language/run/lab_model.expected)
 
     # Analytical case through the CLI: every CSV value against the formula.
     # Tolerance 0.035 K = the bound declared for 17 nodes in test_heat1d.c.

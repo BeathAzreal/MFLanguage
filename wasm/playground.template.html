@@ -1,0 +1,315 @@
+<title>MFL Playground</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: an instrument bench — source on the left, readouts on the right, thermal plot below. */
+:root {
+  --bg: #f3f4f1; --panel: #ffffff; --ink: #17202a; --muted: #5b6672; --rule: #d5d9d4;
+  --accent: #1f4fd1; --accent-ink: #ffffff; --ok: #1f7a4d; --bad: #b3261e; --code-bg: #f8f9f6;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12161b; --panel: #1a2027; --ink: #e6e9ec; --muted: #9aa5b1; --rule: #2c353f;
+  --accent: #7ea2ff; --accent-ink: #0d1320; --ok: #5fd39a; --bad: #ff8a80; --code-bg: #151a20; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12161b; --panel: #1a2027; --ink: #e6e9ec; --muted: #9aa5b1; --rule: #2c353f;
+  --accent: #7ea2ff; --accent-ink: #0d1320; --ok: #5fd39a; --bad: #ff8a80; --code-bg: #151a20; color-scheme: dark }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 16px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 28px; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.tag { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.lede { margin: 0; color: var(--muted); max-width: 70ch; }
+.bench { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; }
+@media (max-width: 860px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; display: grid; min-width: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+.bar .label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; margin-right: auto; }
+select, button { font: 500 13px var(--body); border-radius: 4px; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); padding: 6px 10px; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+.tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--rule); overflow-x: auto; }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 8px 10px; font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+textarea { width: 100%; box-sizing: border-box; min-height: 420px; resize: vertical; border: 0; background: var(--code-bg); color: var(--ink);
+  font: 13px/1.55 var(--mono); padding: 12px 14px; tab-size: 4; white-space: pre; overflow: auto; }
+pre.out { margin: 0; padding: 12px 14px; font: 13px/1.55 var(--mono); white-space: pre-wrap; word-break: break-word; min-height: 120px; max-height: 360px; overflow: auto; }
+.err { color: var(--bad); }
+.status { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); }
+.status.ok { color: var(--ok); border-color: currentColor; }
+.status.bad { color: var(--bad); border-color: currentColor; }
+.plot { padding: 12px; display: grid; gap: 10px; }
+.plot canvas { width: 100%; max-width: 100%; height: auto; display: block; }
+.slider { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.slider input { flex: 1 1 200px; }
+.empty { color: var(--muted); padding: 18px 14px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px 18px; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.facts b { color: var(--ink); font-weight: 500; }
+footer { color: var(--muted); font-size: 13px; }
+footer code { font-family: var(--mono); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>MFL Playground</h1>
+    <span class="tag" id="version">loading the interpreter…</span>
+    <p class="lede">The real MFL interpreter compiled to WebAssembly: units, dimensional analysis, imports and the 1D heat solver run here in your browser, with the same results as the <code>mfl</code> command.</p>
+  </header>
+
+  <div class="bench">
+    <section class="panel" aria-label="Program">
+      <div class="bar">
+        <span class="label">Program</span>
+        <label for="example" class="tag">Example</label>
+        <select id="example"></select>
+        <button class="primary" id="run" disabled>Run ▸</button>
+      </div>
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <textarea id="editor" spellcheck="false" aria-label="Source of the selected file"></textarea>
+    </section>
+
+    <section class="panel" aria-label="Output">
+      <div class="bar">
+        <span class="label">Output</span>
+        <span class="status" id="status">not run</span>
+      </div>
+      <pre class="out" id="out">Choose an example and press Run.</pre>
+      <div class="bar" style="border-top:1px solid var(--rule);border-bottom:0">
+        <span class="label">Exported data</span>
+        <button id="copy-csv" disabled>Copy CSV</button>
+        <button id="save-csv" disabled hidden>Save CSV</button>
+        <button id="copy-meta" disabled>Copy metadata</button>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="Temperature plot">
+    <div class="bar">
+      <span class="label">Temperature T(x, t) of the last heat.run()</span>
+      <span class="facts" id="facts"></span>
+    </div>
+    <div class="plot" id="plot-area">
+      <p class="empty" id="plot-empty">Run a program that calls <code>heat.run()</code> (for example “Bar heated at one end”) to see the temperature field here.</p>
+      <canvas id="map" width="1200" height="300" hidden aria-label="Heat map: position on the horizontal axis, time downwards, colour is temperature"></canvas>
+      <div class="slider" id="slider-row" hidden>
+        <label for="t">profile at</label>
+        <input type="range" id="t" min="0" max="0" value="0">
+        <span id="t-label"></span>
+      </div>
+      <canvas id="profile" width="1200" height="360" hidden aria-label="Temperature profile along the bar at the selected time"></canvas>
+    </div>
+  </section>
+
+  <footer>
+    Engine: <code>mfl.wasm</code> built from the MFL C sources (<code>wasm/build.sh</code>), loaded by <code>wasm/mfl.js</code>. Edit any file tab; imports resolve between the tabs exactly as on disk.
+  </footer>
+</div>
+
+<script>/*MFL_JS*/</script>
+<script>
+const WASM_B64 = "/*WASM_B64*/";
+const EXAMPLES = /*EXAMPLES*/;
+
+const $ = (id) => document.getElementById(id);
+let mfl = null;
+let current = EXAMPLES[0];
+let activeFile = current.main;
+let edits = {};
+let lastSim = null;
+
+function key(ex, path) { return ex.id + "::" + path; }
+function fileText(ex, path) { const k = key(ex, path); return k in edits ? edits[k] : ex.files[path]; }
+
+function renderTabs() {
+  const tabs = $("tabs");
+  tabs.textContent = "";
+  for (const path of Object.keys(current.files)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", String(path === activeFile));
+    b.textContent = path.split("/").slice(-2).join("/");
+    b.title = path;
+    b.addEventListener("click", () => { activeFile = path; renderTabs(); $("editor").value = fileText(current, path); });
+    tabs.appendChild(b);
+  }
+}
+
+function selectExample(id) {
+  current = EXAMPLES.find((e) => e.id === id) || EXAMPLES[0];
+  activeFile = current.main;
+  renderTabs();
+  $("editor").value = fileText(current, activeFile);
+}
+
+$("editor").addEventListener("input", () => { edits[key(current, activeFile)] = $("editor").value; });
+$("editor").addEventListener("keydown", (e) => {
+  if (e.key === "Tab") { e.preventDefault(); const t = e.target, s = t.selectionStart; t.setRangeText("    ", s, t.selectionEnd, "end"); edits[key(current, activeFile)] = t.value; }
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); }
+});
+
+for (const ex of EXAMPLES) {
+  const o = document.createElement("option");
+  o.value = ex.id; o.textContent = ex.title;
+  $("example").appendChild(o);
+}
+$("example").addEventListener("change", (e) => selectExample(e.target.value));
+selectExample(EXAMPLES[0].id);
+
+function run() {
+  if (!mfl) return;
+  mfl.clearFiles();
+  for (const path of Object.keys(current.files)) mfl.addFile(path, fileText(current, path));
+  const t0 = performance.now();
+  const r = mfl.run(current.main, { maxSteps: 200000000 });
+  const ms = performance.now() - t0;
+  const out = $("out");
+  out.textContent = "";
+  if (r.stdout) out.appendChild(document.createTextNode(r.stdout));
+  if (r.stderr) { const s = document.createElement("span"); s.className = "err"; s.textContent = r.stderr; out.appendChild(s); }
+  if (!r.stdout && !r.stderr) out.textContent = "(no output)";
+  const st = $("status");
+  st.textContent = (r.status === 0 ? "ok" : "exit " + r.status) + " · " + ms.toFixed(ms < 10 ? 1 : 0) + " ms";
+  st.className = "status " + (r.status === 0 ? "ok" : "bad");
+  lastSim = r.status === 0 ? r.simulation : null;
+  for (const id of ["copy-csv", "copy-meta", "save-csv"]) $(id).disabled = !lastSim;
+  drawAll();
+}
+$("run").addEventListener("click", run);
+
+/* ---- plotting ---------------------------------------------------------- */
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function thermal(u) { /* dark blue -> red -> yellow -> white, perceptually ordered */
+  const stops = [[13, 8, 135], [126, 3, 168], [204, 71, 120], [248, 149, 64], [240, 249, 33]];
+  u = Math.min(1, Math.max(0, u)) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(u)), f = u - i, a = stops[i], b = stops[i + 1];
+  return [0, 1, 2].map((k) => Math.round(a[k] + (b[k] - a[k]) * f));
+}
+function fmt(x, d = 1) { return (Math.round(x * 10 ** d) / 10 ** d).toFixed(d); }
+
+function drawAll() {
+  const has = !!lastSim;
+  $("plot-empty").hidden = has;
+  for (const id of ["map", "profile", "slider-row"]) $(id).hidden = !has;
+  $("facts").textContent = "";
+  if (!has) return;
+  const s = lastSim;
+  let lo = Infinity, hi = -Infinity;
+  for (const v of s.temperatures) { lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  if (hi - lo < 1e-9) { hi = lo + 1; }
+  s._lo = lo; s._hi = hi;
+  const facts = $("facts");
+  const add = (k, v) => { const e = document.createElement("span"); e.append(k + " "); const b = document.createElement("b"); b.textContent = v; e.appendChild(b); facts.appendChild(e); };
+  add("samples", String(s.samples)); add("nodes", String(s.nodes));
+  add("L", fmt(s.positions[s.nodes - 1] * 1000, 1) + " mm"); add("t end", fmt(s.times[s.samples - 1], 2) + " s");
+  add("T range", fmt(lo - 273.15) + " … " + fmt(hi - 273.15) + " °C");
+  const t = $("t");
+  t.max = String(s.samples - 1);
+  t.value = String(s.samples - 1); /* start at the final state */
+  drawMap(); drawProfile();
+}
+
+function drawMap() {
+  const s = lastSim, c = $("map"), g = c.getContext("2d");
+  const W = c.width, H = c.height, padL = 96, padR = 150, padT = 12, padB = 34;
+  g.clearRect(0, 0, W, H);
+  const img = g.createImageData(W - padL - padR, H - padT - padB);
+  const iw = img.width, ih = img.height;
+  for (let y = 0; y < ih; y++) {
+    const si = Math.min(s.samples - 1, Math.floor(y / ih * s.samples));
+    for (let x = 0; x < iw; x++) {
+      const fx = x / (iw - 1) * (s.nodes - 1), j = Math.min(s.nodes - 2, Math.floor(fx)), f = fx - j;
+      const v = s.at(si, j) * (1 - f) + s.at(si, Math.min(s.nodes - 1, j + 1)) * f;
+      const [r, gg, b] = thermal((v - s._lo) / (s._hi - s._lo));
+      const p = (y * iw + x) * 4; img.data[p] = r; img.data[p + 1] = gg; img.data[p + 2] = b; img.data[p + 3] = 255;
+    }
+  }
+  g.putImageData(img, padL, padT);
+  g.fillStyle = css("--muted"); g.font = "22px " + css("--mono"); g.textAlign = "center";
+  const L = s.positions[s.nodes - 1];
+  for (let k = 0; k <= 4; k++) g.fillText(fmt(L * 1000 * k / 4, 0) + " mm", padL + iw * k / 4, H - 8);
+  g.textAlign = "right";
+  g.fillText("0 s", padL - 8, padT + 18);
+  g.fillText(fmt(s.times[s.samples - 1], 0) + " s", padL - 8, padT + ih);
+  /* colour bar */
+  for (let y = 0; y < ih; y++) { const [r, gg, b] = thermal(1 - y / (ih - 1)); g.fillStyle = `rgb(${r},${gg},${b})`; g.fillRect(W - padR + 14, padT + y, 16, 1); }
+  g.fillStyle = css("--muted"); g.textAlign = "left";
+  g.fillText(fmt(s._hi - 273.15, 0) + "°C", W - padR + 34, padT + 18);
+  g.fillText(fmt(s._lo - 273.15, 0) + "°C", W - padR + 34, padT + ih);
+  /* selected time */
+  const si = +$("t").value, y = padT + (si + 0.5) / s.samples * ih;
+  g.strokeStyle = css("--ink"); g.lineWidth = 2; g.setLineDash([8, 6]);
+  g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + iw, y); g.stroke(); g.setLineDash([]);
+}
+
+function drawProfile() {
+  const s = lastSim, c = $("profile"), g = c.getContext("2d");
+  const W = c.width, H = c.height, padL = 96, padR = 60, padT = 16, padB = 40;
+  const si = +$("t").value;
+  $("t-label").textContent = "t = " + fmt(s.times[si], 2) + " s (sample " + si + ")";
+  g.clearRect(0, 0, W, H);
+  const lo = s._lo - 273.15, hi = s._hi - 273.15, L = s.positions[s.nodes - 1];
+  const X = (x) => padL + x / L * (W - padL - padR), Y = (T) => padT + (1 - (T - lo) / (hi - lo)) * (H - padT - padB);
+  g.strokeStyle = css("--rule"); g.lineWidth = 1; g.fillStyle = css("--muted"); g.font = "22px " + css("--mono");
+  g.textAlign = "right";
+  for (let k = 0; k <= 4; k++) { const T = lo + (hi - lo) * k / 4, y = Y(T); g.beginPath(); g.moveTo(padL, y); g.lineTo(W - padR, y); g.stroke(); g.fillText(fmt(T, 0) + "°C", padL - 10, y + 7); }
+  g.textAlign = "center";
+  for (let k = 0; k <= 4; k++) g.fillText(fmt(L * 1000 * k / 4, 0) + " mm", X(L * k / 4), H - 10);
+  /* initial profile, faint */
+  g.strokeStyle = css("--muted"); g.lineWidth = 2; g.setLineDash([6, 6]); g.beginPath();
+  for (let j = 0; j < s.nodes; j++) { const x = X(s.positions[j]), y = Y(s.at(0, j) - 273.15); j ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke(); g.setLineDash([]);
+  /* selected profile */
+  g.strokeStyle = css("--accent"); g.lineWidth = 4; g.beginPath();
+  for (let j = 0; j < s.nodes; j++) { const x = X(s.positions[j]), y = Y(s.at(si, j) - 273.15); j ? g.lineTo(x, y) : g.moveTo(x, y); }
+  g.stroke();
+  g.fillStyle = css("--accent");
+  for (let j = 0; j < s.nodes; j++) { g.beginPath(); g.arc(X(s.positions[j]), Y(s.at(si, j) - 273.15), 5, 0, 7); g.fill(); }
+}
+$("t").addEventListener("input", () => { if (lastSim) { drawMap(); drawProfile(); } });
+const themeObserver = new MutationObserver(() => lastSim && drawAll());
+themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+try { matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => lastSim && drawAll()); } catch (e) {}
+
+/* ---- data export -------------------------------------------------------- */
+async function copy(text, button) {
+  const label = button.textContent;
+  try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
+  catch (e) { $("out").textContent = text; button.textContent = "Shown in Output"; }
+  setTimeout(() => { button.textContent = label; }, 1600);
+}
+$("copy-csv").addEventListener("click", (e) => lastSim && copy(lastSim.csv, e.currentTarget));
+$("copy-meta").addEventListener("click", (e) => lastSim && copy(lastSim.metadata, e.currentTarget));
+let downloads = null;
+(async () => {
+  try { downloads = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch (e) { downloads = null; }
+  if (downloads) $("save-csv").hidden = false;
+})();
+$("save-csv").addEventListener("click", async (e) => {
+  if (!lastSim || !downloads) return;
+  try { await downloads.save({ filename: "mfl-simulation.csv", data: lastSim.csv }); }
+  catch (err) { e.currentTarget.textContent = "Not saved"; setTimeout(() => { e.currentTarget.textContent = "Save CSV"; }, 1600); }
+});
+
+/* ---- start ------------------------------------------------------------- */
+(async () => {
+  try {
+    const bin = Uint8Array.from(atob(WASM_B64), (ch) => ch.charCodeAt(0));
+    mfl = await MFL.create(bin);
+    $("version").textContent = "MFL " + mfl.version + " · WebAssembly";
+    $("run").disabled = false;
+    run();
+  } catch (e) {
+    $("version").textContent = "the interpreter could not start in this browser";
+    $("out").textContent = String(e);
+  }
+})();
+</script>
