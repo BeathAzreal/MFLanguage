@@ -43,6 +43,7 @@ português, prontos para virar texto de relatório, monografia ou artigo.
 | 2026-11-06 | [Parser e AST](diario/2026-11-06_parser.md) | Parser, `mfl --ast`, recuperação de erros, regra de palavra-chave de comando |
 | 2026-11-06 | [Verificação semântica](diario/2026-11-06_verificacao-semantica.md) | Registro de unidades, análise dimensional estática, `mfl --types` |
 | 2026-11-06 | [Compilador e VM](diario/2026-11-06_compilador-vm.md) | Bytecode, máquina virtual, números independentes de *locale*, **`480 J/mm`**, testes diferenciais |
+| 2026-11-06 | [API de embutir](diario/2026-11-06_api-embutir.md) | API C para jogos, exemplo de hospedeiro, experimento de precisão refutado |
 
 ## Possíveis enquadramentos acadêmicos
 

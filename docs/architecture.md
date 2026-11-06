@@ -98,25 +98,38 @@ int mfl_register_module(MflState *S, const char *name,
 - Modules may also be written in MFL itself once functions exist.
 - The core binary can be built without any module (minimal embed size).
 
-## 6. Embedding C API (planned)
+## 6. Embedding C API
+
+> **Implemented** (v0.1 subset). Reference and usage guide:
+> [`embedding.md`](embedding.md); header: `include/mfl/mfl.h`;
+> implementation: `src/api/mfl_api.c`.
 
 ```c
-MflState   *mfl_state_new(const MflConfig *cfg);
-void        mfl_state_free(MflState *S);
-MflResult   mfl_eval_string(MflState *S, const char *src, const char *chunk_name);
-MflResult   mfl_eval_file(MflState *S, const char *path);
-int         mfl_set_quantity(MflState *S, const char *name, double v, const char *unit);
-int         mfl_get_quantity(MflState *S, const char *name, const char *unit, double *out);
-const char *mfl_last_error(const MflState *S);
+MflState  *mfl_state_new(const MflConfig *cfg);          /* output callback, memory limit */
+void       mfl_state_free(MflState *S);
+MflStatus  mfl_set_number(MflState *S, const char *name, double v, const char *unit);
+MflStatus  mfl_eval(MflState *S, const char *src, size_t len, const char *name);
+MflScript *mfl_script_compile(MflState *S, const char *src, size_t len, const char *name);
+MflStatus  mfl_script_run(MflState *S, MflScript *script);
+MflStatus  mfl_get_number(MflState *S, const char *name, const char *unit, double *out);
+const char *mfl_error_message(const MflState *S);
 ```
 
-Use case — a game (e.g. *SoldamatGamification*) passes the player's chosen
-voltage, current and travel speed, runs a hidden MFL thermal model and reads
-back peak temperature or heat input. Players never see MFL code.
+Use case: a game (e.g. *SoldamatGamification*) passes the player's chosen
+voltage, current and travel speed, runs a hidden MFL model and reads back
+the heat input. Players never see MFL code.
 
-Design rules for the API: opaque handles, no global state, no `exit()`
-calls, errors returned as codes + message, all strings UTF-8, host-provided
-allocator and output callback (`print` can be redirected).
+Differences from the first draft of this section: `mfl_set_quantity` and
+`mfl_get_quantity` became `mfl_set_number`/`mfl_get_number` (with a unit
+argument); `mfl_eval_file` was dropped (the host reads files itself);
+compile-once/run-many scripts were added for interactive use; a
+host-supplied allocator is still pending (only a memory limit exists).
+
+Design rules: opaque handles, no global state, no `exit()` calls, errors
+returned as codes + message, all strings UTF-8, output callback for
+`print`. Internally, host inputs are declared to the checker before the
+script (so dimensional analysis knows them) and enter the VM as the first
+global slots; after a run, every global is copied back to the state.
 
 ## 7. WebAssembly (future)
 

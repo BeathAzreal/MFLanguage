@@ -25,6 +25,7 @@ na IC ou no TCC.
 | 2026-11-06 | Parser e AST (`src/parser/`, `src/runtime/arena.*`, testes, `mfl --ast`) | Implementou o código e os testes, verificou com sanitizers, fuzz e CI | Autorizou o merge do lexer e solicitou a etapa | Testes automatizados; revisão do código pendente |
 | 2026-11-06 | Verificação semântica (`src/compiler/checker.*`, `src/runtime/units.*`, testes, `mfl --types`) | Implementou o código e os testes, verificou com sanitizers, fuzz e CI | Autorizou o merge do parser e solicitou a etapa | Testes automatizados; revisão do código e dos valores de unidades pendente |
 | 2026-11-06 | Compilador e VM (`src/compiler/chunk.*`, `compiler.*`, `src/vm/`, `src/runtime/number.*`, testes) | Implementou o código e os testes, verificou com testes diferenciais (Python), sanitizers e CI | Testou a versão anterior, autorizou o merge e solicitou a etapa | Testes automatizados e diferenciais; revisão do código pendente |
+| 2026-11-06 | API de embutir (`include/mfl/mfl.h`, `src/api/`, exemplo, testes, `docs/embedding.md`) | Projetou e implementou a API, o exemplo e os testes; propôs, mediu e reverteu um experimento de precisão | Pediu para continuar (o merge do PR #5 ficou pendente de aprovação explícita) | Testes automatizados; revisão do projeto da API pendente |
 
 ## Boas práticas adotadas
 
