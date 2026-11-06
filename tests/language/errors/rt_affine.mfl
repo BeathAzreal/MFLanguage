@@ -1,0 +1,3 @@
+fn twice(t) { return t * 2 }
+print(twice(20 K))
+print(twice(20 degC))

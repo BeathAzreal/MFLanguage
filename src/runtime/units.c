@@ -115,32 +115,38 @@ typedef struct {
     int         exp10;
     signed char exp[MFL_DIM_COUNT]; /* m kg s A K mol cd */
     int         prefixable;
+    int         affine; /* offset scale (degC) */
 } UnitDef;
 
 static const UnitDef units[] = {
     /* SI base units (kg takes no prefix: prefixes go on g) */
-    {"m", 1, 0, {1, 0, 0, 0, 0, 0, 0}, 1},
-    {"kg", 1, 0, {0, 1, 0, 0, 0, 0, 0}, 0},
-    {"g", 1, -3, {0, 1, 0, 0, 0, 0, 0}, 1},
-    {"s", 1, 0, {0, 0, 1, 0, 0, 0, 0}, 1},
-    {"A", 1, 0, {0, 0, 0, 1, 0, 0, 0}, 1},
-    {"K", 1, 0, {0, 0, 0, 0, 1, 0, 0}, 1},
-    {"mol", 1, 0, {0, 0, 0, 0, 0, 1, 0}, 1},
-    {"cd", 1, 0, {0, 0, 0, 0, 0, 0, 1}, 1},
+    {"m", 1, 0, {1, 0, 0, 0, 0, 0, 0}, 1, 0},
+    {"kg", 1, 0, {0, 1, 0, 0, 0, 0, 0}, 0, 0},
+    {"g", 1, -3, {0, 1, 0, 0, 0, 0, 0}, 1, 0},
+    {"s", 1, 0, {0, 0, 1, 0, 0, 0, 0}, 1, 0},
+    {"A", 1, 0, {0, 0, 0, 1, 0, 0, 0}, 1, 0},
+    {"K", 1, 0, {0, 0, 0, 0, 1, 0, 0}, 1, 0},
+    {"mol", 1, 0, {0, 0, 0, 0, 0, 1, 0}, 1, 0},
+    {"cd", 1, 0, {0, 0, 0, 0, 0, 0, 1}, 1, 0},
     /* SI derived units */
-    {"N", 1, 0, {1, 1, -2, 0, 0, 0, 0}, 1},
-    {"Pa", 1, 0, {-1, 1, -2, 0, 0, 0, 0}, 1},
-    {"J", 1, 0, {2, 1, -2, 0, 0, 0, 0}, 1},
-    {"W", 1, 0, {2, 1, -3, 0, 0, 0, 0}, 1},
-    {"C", 1, 0, {0, 0, 1, 1, 0, 0, 0}, 1},
-    {"V", 1, 0, {2, 1, -3, -1, 0, 0, 0}, 1},
-    {"ohm", 1, 0, {2, 1, -3, -2, 0, 0, 0}, 1},
-    {"Hz", 1, 0, {0, 0, -1, 0, 0, 0, 0}, 1},
+    {"N", 1, 0, {1, 1, -2, 0, 0, 0, 0}, 1, 0},
+    {"Pa", 1, 0, {-1, 1, -2, 0, 0, 0, 0}, 1, 0},
+    {"J", 1, 0, {2, 1, -2, 0, 0, 0, 0}, 1, 0},
+    {"W", 1, 0, {2, 1, -3, 0, 0, 0, 0}, 1, 0},
+    {"C", 1, 0, {0, 0, 1, 1, 0, 0, 0}, 1, 0},
+    {"V", 1, 0, {2, 1, -3, -1, 0, 0, 0}, 1, 0},
+    {"ohm", 1, 0, {2, 1, -3, -2, 0, 0, 0}, 1, 0},
+    {"Hz", 1, 0, {0, 0, -1, 0, 0, 0, 0}, 1, 0},
     /* Non-SI units accepted in welding and materials work */
-    {"min", 60, 0, {0, 0, 1, 0, 0, 0, 0}, 0},
-    {"h", 3600, 0, {0, 0, 1, 0, 0, 0, 0}, 0},
-    {"L", 1, -3, {3, 0, 0, 0, 0, 0, 0}, 1},
-    {"bar", 1, 5, {-1, 1, -2, 0, 0, 0, 0}, 0},
+    {"min", 60, 0, {0, 0, 1, 0, 0, 0, 0}, 0, 0},
+    {"h", 3600, 0, {0, 0, 1, 0, 0, 0, 0}, 0, 0},
+    {"L", 1, -3, {3, 0, 0, 0, 0, 0, 0}, 1, 0},
+    {"bar", 1, 5, {-1, 1, -2, 0, 0, 0, 0}, 0, 0},
+    /* Temperature on the Celsius scale (v0.2, docs/units.md section 5) */
+    {"degC", 1, 0, {0, 0, 0, 0, 1, 0, 0}, 0, 1},       /* absolute temperature */
+    {"delta_degC", 1, 0, {0, 0, 0, 0, 1, 0, 0}, 0, 0}, /* temperature difference = 1 K */
+    /* Dimensionless */
+    {"percent", 1, -2, {0, 0, 0, 0, 0, 0, 0}, 0, 0},
 };
 
 static const struct {
@@ -157,7 +163,8 @@ void mfl_dim_display_name(MflDim d, char *buf, size_t size)
     const UnitDef *match = NULL;
     int matches = 0;
     for (i = 0; i < sizeof units / sizeof units[0]; i++) {
-        if (units[i].num == 1.0 && units[i].exp10 == 0 &&
+        if (units[i].num == 1.0 && units[i].exp10 == 0 && !units[i].affine &&
+            strcmp(units[i].symbol, "delta_degC") != 0 &&
             memcmp(units[i].exp, d.exp, sizeof d.exp) == 0) {
             match = &units[i];
             matches++;
@@ -181,34 +188,43 @@ static const UnitDef *find_exact(const char *name, size_t length)
     return NULL;
 }
 
-static MflUnitStatus found(const UnitDef *u, int prefix_exp10, MflScale *scale, MflDim *dim)
+static MflUnitStatus found(const UnitDef *u, int prefix_exp10, MflScale *scale, MflDim *dim,
+                           int *affine)
 {
     scale->num = u->num;
     scale->den = 1.0;
     scale->exp10 = u->exp10 + prefix_exp10;
     memcpy(dim->exp, u->exp, sizeof dim->exp);
+    if (affine != NULL) {
+        *affine = u->affine;
+    }
     return MFL_UNIT_OK;
 }
 
-MflUnitStatus mfl_unit_lookup(const char *name, size_t length, MflScale *scale, MflDim *dim)
+MflUnitStatus mfl_unit_lookup(const char *name, size_t length, MflScale *scale, MflDim *dim,
+                              int *affine)
 {
     const UnitDef *u = find_exact(name, length);
     size_t i;
 
+    if (affine != NULL) {
+        *affine = 0;
+    }
     if (u != NULL) {
-        return found(u, 0, scale, dim);
+        return found(u, 0, scale, dim, affine);
     }
     if (length >= 2) {
         for (i = 0; i < sizeof prefixes / sizeof prefixes[0]; i++) {
             if (name[0] == prefixes[i].symbol) {
                 u = find_exact(name + 1, length - 1);
                 if (u != NULL && u->prefixable) {
-                    return found(u, prefixes[i].exp10, scale, dim);
+                    return found(u, prefixes[i].exp10, scale, dim, affine);
                 }
             }
         }
     }
-    if (length == 4 && memcmp(name, "degC", 4) == 0) {
+    if ((length == 4 && memcmp(name, "degF", 4) == 0) ||
+        (length == 10 && memcmp(name, "delta_degF", 10) == 0)) {
         return MFL_UNIT_UNSUPPORTED;
     }
     return MFL_UNIT_UNKNOWN;

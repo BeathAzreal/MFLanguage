@@ -7,8 +7,9 @@
  *   mfl --types file.mfl      inferred type of every declared name
  *   mfl --bytecode file.mfl   compiled bytecode listing
  *
- * Exit status: 0 success, 1 errors in the program or bad usage,
- * 3 internal failure (out of memory, invalid bytecode).
+ * Exit status: 0 success, 1 errors in the program (compile-time or
+ * run-time, reported as file:line:col) or bad usage, 3 internal failure
+ * (out of memory, invalid bytecode).
  *
  * SPDX-License-Identifier: MIT
  */
@@ -33,7 +34,7 @@ static void usage(FILE *out)
             "       mfl --bytecode <file.mfl>   compile and print the bytecode\n"
             "       mfl --version | --help\n"
             "\n"
-            "MFL %s - pre-alpha (v0.1 subset: let, var, arithmetic with units, print).\n",
+            "MFL %s - pre-alpha (v0.2: functions, control flow, arrays, units, gradual types).\n",
             mfl_version());
 }
 
@@ -187,9 +188,15 @@ static int process_file(const char *path, int mode)
                 mfl_chunk_disassemble(&comp.chunk, write_stdout, NULL);
             }
             if (ok && mode == MODE_RUN) {
-                MflVmStatus vs = mfl_vm_run(&comp.chunk, write_stdout, NULL, 0);
+                MflVmError err;
+                MflVmStatus vs =
+                    mfl_vm_execute(&comp.chunk, NULL, 0, NULL, write_stdout, NULL, NULL, &err);
                 fflush(stdout);
-                if (vs != MFL_VM_OK) {
+                if (vs == MFL_VM_RUNTIME_ERROR) {
+                    fprintf(stderr, "%s:%d:%d: runtime error: %s\n", path, err.line, err.column,
+                            err.message);
+                    ok = 0;
+                } else if (vs != MFL_VM_OK) {
                     fprintf(stderr, "mfl: %s while running '%s'\n",
                             vs == MFL_VM_OUT_OF_MEMORY ? "out of memory" : "invalid bytecode",
                             path);

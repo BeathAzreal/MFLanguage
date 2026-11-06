@@ -1,0 +1,49 @@
+# Conformance (v0.2): arrays - creation, indexing, iteration, growth.
+
+# Equivalent quantities in different units: same dimension, so one array.
+let speeds = [5 mm/s, 0.005 m/s, 0.3 m/min, 18 m/h]
+print(speeds)
+print(len(speeds), speeds[0], speeds[3])
+for v in speeds {
+    print(v, "=", v.to(mm/s))
+}
+var same = true
+for i in 1..len(speeds) {
+    same = same and speeds[i] == speeds[0]
+}
+print("all equal:", same)
+
+# Element assignment and push keep the element type and dimension.
+var widths = [2 mm, 3 mm]
+widths[1] = 0.4 cm
+push(widths, 5 mm)
+print(widths, len(widths))
+
+# Arrays of numbers, Bools and strings; nested arrays.
+let flags = [true, false]
+let names = ["MIG", "MAG"]
+let grid = [[1, 2, 3], [4, 5, 6]]
+print(flags, names, grid, grid[1][2])
+
+# Empty arrays grow with push.
+var log = []
+print(log, len(log))
+push(log, "first")
+push(log, "second")
+print(log)
+
+# Arrays are references: `let` fixes the binding, not the contents.
+let a = [1, 2]
+let b = a
+push(b, 3)
+print(a)
+
+# Sum of quantities in mixed units (converted through SI).
+fn total(xs) {
+    var s = xs[0]
+    for k in 1..len(xs) {
+        s = s + xs[k]
+    }
+    return s
+}
+print(total(speeds).to(mm/s), total([1 kJ, 500 J]).to(kJ))

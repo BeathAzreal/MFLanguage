@@ -1,0 +1,26 @@
+# v0.2 errors found before running (one per line, each reported with its position)
+fn f(x: Quantity[m]) -> Quantity[m] { return x }
+fn no_return(x: Number) -> Number { if x > 0 { return x } }
+fn bare(x: Number) -> Number { return }
+print(f(1 m, 2 m))
+print(f(1 s))
+if 1 { print("a") }
+while "yes" { }
+for i in 0 s..5 s { }
+for c in 42 { }
+let mixed = [1 m, 2 s]
+var lengths = [1 m]
+push(lengths, 3 kg)
+let k = lengths[1 m]
+fn g(p) { p = 1 }
+for j in 0..3 { j = 5 }
+fn h(a) { let b = 1; let b = 2; return a }
+let len = 3
+let hot = 20 degC + 30 degC
+let doubled = 20 degC * 2
+let flipped = -(20 degC)
+let wrong: Quantity[s] = 5 m
+let same = [1] == [1]
+let notfn = 5
+notfn(1)
+let rate = 5 degC/s

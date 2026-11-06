@@ -28,6 +28,8 @@ typedef struct {
     int             panic; /* inside an erroneous statement */
     int             stop;  /* too many errors or out of memory */
     int             depth;
+    int             block_depth; /* open '{' blocks of statements */
+    int             fn_depth;    /* inside a function body */
     MflExpr         oom_expr;
 } Parser;
 
@@ -384,6 +386,37 @@ static MflExpr *parse_primary(Parser *p)
     case MFL_TOK_NIL:
         advance(p);
         return new_expr(p, MFL_EXPR_NIL, &t);
+    case MFL_TOK_LBRACKET: { /* array literal (v0.2) */
+        MflExpr *arr = new_expr(p, MFL_EXPR_ARRAY, &t);
+        MflExpr *first = NULL;
+        MflExpr *last = NULL;
+        int count = 0;
+        advance(p);
+        if (!enter(p)) {
+            return error_expr(p);
+        }
+        if (!check(p, MFL_TOK_RBRACKET)) {
+            do {
+                MflExpr *el = parse_expr(p);
+                if (last == NULL) {
+                    first = el;
+                } else {
+                    last->next = el;
+                }
+                last = el;
+                count++;
+            } while (!p->panic && match(p, MFL_TOK_COMMA));
+        }
+        leave(p);
+        if (!p->panic) {
+            expect(p, MFL_TOK_RBRACKET, "']' to close the array");
+        }
+        if (arr != &p->oom_expr) {
+            arr->as.array.elems = first;
+            arr->as.array.count = count;
+        }
+        return arr;
+    }
     case MFL_TOK_LPAREN: {
         MflExpr *e;
         advance(p);
@@ -607,6 +640,269 @@ static MflStmt *new_stmt(Parser *p, MflStmtKind kind, const MflToken *at)
     return s;
 }
 
+static MflStmt *parse_statement(Parser *p);
+
+static int at_statement_end(const Parser *p)
+{
+    return is_separator(p->cur.kind) || (p->block_depth > 0 && check(p, MFL_TOK_RBRACE));
+}
+
+/* Type annotation: Number | Bool | String | Quantity[unit] | Array[type] */
+static MflTypeExpr *parse_type(Parser *p)
+{
+    MflToken t = p->cur;
+    MflTypeExpr *te;
+
+    if (!check(p, MFL_TOK_IDENT)) {
+        error_expected(p, "a type (Number, Quantity[unit], Bool, String or Array[type])");
+        return NULL;
+    }
+    te = (MflTypeExpr *)mfl_arena_alloc(&p->res->arena, sizeof *te);
+    if (te == NULL) {
+        p->res->out_of_memory = 1;
+        p->stop = 1;
+        return NULL;
+    }
+    te->line = t.line;
+    te->column = t.column;
+    advance(p);
+#define IS(word) (t.length == strlen(word) && memcmp(t.start, word, t.length) == 0)
+    if (IS("Number")) {
+        te->kind = MFL_TE_NUMBER;
+    } else if (IS("Bool")) {
+        te->kind = MFL_TE_BOOL;
+    } else if (IS("String")) {
+        te->kind = MFL_TE_STRING;
+    } else if (IS("Quantity") || IS("Array")) {
+        int quantity = IS("Quantity");
+        if (!expect(p, MFL_TOK_LBRACKET, quantity ? "'[' after Quantity (e.g. Quantity[m/s])"
+                                                  : "'[' after Array (e.g. Array[Number])")) {
+            return NULL;
+        }
+        if (!enter(p)) {
+            return NULL;
+        }
+        if (quantity) {
+            te->kind = MFL_TE_QUANTITY;
+            if (!check(p, MFL_TOK_IDENT) && !check(p, MFL_TOK_LPAREN)) {
+                error_expected(p, "a unit inside Quantity[...]");
+                leave(p);
+                return NULL;
+            }
+            te->unit = parse_unit(p);
+        } else {
+            te->kind = MFL_TE_ARRAY;
+            te->elem = parse_type(p);
+        }
+        leave(p);
+        if (p->panic || !expect(p, MFL_TOK_RBRACKET, "']' to close the type")) {
+            return NULL;
+        }
+    } else {
+        char found[64];
+        describe(&t, found, sizeof found);
+        error_at(p, &t, "unknown type %s (expected Number, Quantity[unit], Bool, String or Array[type])",
+                 found);
+        return NULL;
+    }
+#undef IS
+    return te;
+}
+
+/* '{' statements '}' -> first statement of the block (NULL if empty). */
+static MflStmt *parse_block(Parser *p, const char *what)
+{
+    MflToken open = p->cur;
+    MflStmt *first = NULL;
+    MflStmt *last = NULL;
+
+    if (!check(p, MFL_TOK_LBRACE)) {
+        error_expected(p, what);
+        return NULL;
+    }
+    advance(p);
+    if (!enter(p)) {
+        return NULL;
+    }
+    p->block_depth++;
+    for (;;) {
+        MflStmt *s;
+        while (match(p, MFL_TOK_NEWLINE) || match(p, MFL_TOK_SEMICOLON)) {
+        }
+        if (check(p, MFL_TOK_RBRACE) || check(p, MFL_TOK_EOF) || p->stop) {
+            break;
+        }
+        s = parse_statement(p);
+        if (p->panic) {
+            /* recover inside the block: skip to the end of the statement */
+            int braces = 0;
+            while (!check(p, MFL_TOK_EOF)) {
+                if (braces == 0 && (check(p, MFL_TOK_NEWLINE) || check(p, MFL_TOK_SEMICOLON) ||
+                                    check(p, MFL_TOK_RBRACE))) {
+                    break;
+                }
+                if (check(p, MFL_TOK_LBRACE)) {
+                    braces++;
+                } else if (check(p, MFL_TOK_RBRACE)) {
+                    braces--;
+                }
+                advance(p);
+            }
+            p->panic = 0;
+            continue;
+        }
+        if (s != NULL) {
+            if (last == NULL) {
+                first = s;
+            } else {
+                last->next = s;
+            }
+            last = s;
+        }
+    }
+    p->block_depth--;
+    leave(p);
+    if (!match(p, MFL_TOK_RBRACE)) {
+        char found[64];
+        describe(&p->cur, found, sizeof found);
+        error_at(p, &p->cur, "expected '}' to close the block opened at %d:%d, found %s",
+                 open.line, open.column, found);
+    }
+    return first;
+}
+
+static MflStmt *parse_if(Parser *p, const MflToken *start)
+{
+    MflStmt *s = new_stmt(p, MFL_STMT_IF, start);
+    MflExpr *cond;
+    MflStmt *then_body;
+
+    cond = parse_expr(p);
+    if (p->panic) {
+        return NULL;
+    }
+    then_body = parse_block(p, "'{' after the condition of 'if'");
+    if (p->panic) {
+        return NULL;
+    }
+    if (s != NULL) {
+        s->value = cond;
+        s->body = then_body;
+    }
+    /* `}` NEWLINE `else` continues the same statement */
+    if (check(p, MFL_TOK_NEWLINE) && peek_kind(p, 1) == MFL_TOK_ELSE) {
+        advance(p);
+    }
+    if (match(p, MFL_TOK_ELSE)) {
+        MflToken at = p->prev;
+        MflStmt *else_body;
+        if (match(p, MFL_TOK_IF)) {
+            if (!enter(p)) {
+                return NULL;
+            }
+            else_body = parse_if(p, &p->prev);
+            leave(p);
+        } else {
+            MflStmt *blk = new_stmt(p, MFL_STMT_BLOCK, &at);
+            MflStmt *b = parse_block(p, "'{' or 'if' after 'else'");
+            if (blk != NULL) {
+                blk->body = b;
+            }
+            else_body = blk;
+        }
+        if (s != NULL) {
+            s->else_body = else_body;
+        }
+    }
+    return s;
+}
+
+static MflParam *parse_params(Parser *p, int *count)
+{
+    MflParam *first = NULL;
+    MflParam *last = NULL;
+    *count = 0;
+    if (check(p, MFL_TOK_RPAREN)) {
+        return NULL;
+    }
+    do {
+        MflParam *prm;
+        if (!expect(p, MFL_TOK_IDENT, "parameter name")) {
+            return first;
+        }
+        prm = (MflParam *)mfl_arena_alloc(&p->res->arena, sizeof *prm);
+        if (prm == NULL) {
+            p->res->out_of_memory = 1;
+            p->stop = 1;
+            return first;
+        }
+        prm->name = text_of(&p->prev);
+        prm->line = p->prev.line;
+        prm->column = p->prev.column;
+        if (match(p, MFL_TOK_COLON)) {
+            prm->type = parse_type(p);
+            if (p->panic) {
+                return first;
+            }
+        }
+        if (last == NULL) {
+            first = prm;
+        } else {
+            last->next = prm;
+        }
+        last = prm;
+        (*count)++;
+    } while (match(p, MFL_TOK_COMMA));
+    return first;
+}
+
+static MflStmt *parse_fn(Parser *p, const MflToken *start)
+{
+    MflStmt *s;
+    MflToken name;
+    MflParam *params;
+    int count = 0;
+    MflTypeExpr *ret = NULL;
+    MflStmt *body;
+
+    if (p->block_depth > 0 || p->fn_depth > 0) {
+        error_at(p, start, "functions can only be declared at the top level (no nested functions in v0.2)");
+        return NULL;
+    }
+    if (!expect(p, MFL_TOK_IDENT, "function name after 'fn'")) {
+        return NULL;
+    }
+    name = p->prev;
+    if (!expect(p, MFL_TOK_LPAREN, "'(' after the function name")) {
+        return NULL;
+    }
+    params = parse_params(p, &count);
+    if (p->panic || !expect(p, MFL_TOK_RPAREN, "')' after the parameters")) {
+        return NULL;
+    }
+    if (match(p, MFL_TOK_ARROW)) {
+        ret = parse_type(p);
+        if (p->panic) {
+            return NULL;
+        }
+    }
+    p->fn_depth++;
+    body = parse_block(p, "'{' to start the function body");
+    p->fn_depth--;
+    if (p->panic) {
+        return NULL;
+    }
+    s = new_stmt(p, MFL_STMT_FN, start);
+    if (s != NULL) {
+        s->name = text_of(&name);
+        s->params = params;
+        s->param_count = count;
+        s->ret_type = ret;
+        s->body = body;
+    }
+    return s;
+}
+
 static MflStmt *parse_statement(Parser *p)
 {
     MflToken start = p->cur;
@@ -617,6 +913,7 @@ static MflStmt *parse_statement(Parser *p)
     case MFL_TOK_VAR: {
         MflToken name;
         MflExpr *value;
+        MflTypeExpr *annotation = NULL;
         const char *kw = start.kind == MFL_TOK_LET ? "let" : "var";
         char what[64];
         advance(p);
@@ -625,6 +922,12 @@ static MflStmt *parse_statement(Parser *p)
             return NULL;
         }
         name = p->prev;
+        if (match(p, MFL_TOK_COLON)) {
+            annotation = parse_type(p);
+            if (p->panic) {
+                return NULL;
+            }
+        }
         snprintf(what, sizeof what, "'=' after '%.*s'", name.length > 24 ? 24 : (int)name.length,
                  name.start);
         if (!expect(p, MFL_TOK_EQ, what)) {
@@ -634,19 +937,111 @@ static MflStmt *parse_statement(Parser *p)
         s = new_stmt(p, start.kind == MFL_TOK_LET ? MFL_STMT_LET : MFL_STMT_VAR, &start);
         if (s != NULL) {
             s->name = text_of(&name);
+            s->annotation = annotation;
             s->value = value;
         }
         break;
     }
     case MFL_TOK_FN:
+        advance(p);
+        s = parse_fn(p, &start);
+        break;
+    case MFL_TOK_RETURN: {
+        MflExpr *value = NULL;
+        advance(p);
+        if (p->fn_depth == 0) {
+            error_at(p, &start, "'return' outside a function");
+            return NULL;
+        }
+        if (!at_statement_end(p)) {
+            value = parse_expr(p);
+        }
+        s = new_stmt(p, MFL_STMT_RETURN, &start);
+        if (s != NULL) {
+            s->value = value;
+        }
+        break;
+    }
     case MFL_TOK_IF:
+        advance(p);
+        if (!enter(p)) {
+            return NULL;
+        }
+        s = parse_if(p, &start);
+        leave(p);
+        break;
+    case MFL_TOK_WHILE: {
+        MflExpr *cond;
+        MflStmt *body;
+        advance(p);
+        cond = parse_expr(p);
+        if (p->panic) {
+            return NULL;
+        }
+        if (!enter(p)) {
+            return NULL;
+        }
+        body = parse_block(p, "'{' after the condition of 'while'");
+        leave(p);
+        s = new_stmt(p, MFL_STMT_WHILE, &start);
+        if (s != NULL) {
+            s->value = cond;
+            s->body = body;
+        }
+        break;
+    }
+    case MFL_TOK_FOR: {
+        MflToken var;
+        MflExpr *first;
+        MflExpr *end = NULL;
+        MflStmt *body;
+        advance(p);
+        if (!expect(p, MFL_TOK_IDENT, "loop variable name after 'for'")) {
+            return NULL;
+        }
+        var = p->prev;
+        if (!expect(p, MFL_TOK_IN, "'in' after the loop variable")) {
+            return NULL;
+        }
+        first = parse_expr(p);
+        if (!p->panic && match(p, MFL_TOK_DOT_DOT)) {
+            end = parse_expr(p);
+        }
+        if (p->panic) {
+            return NULL;
+        }
+        if (!enter(p)) {
+            return NULL;
+        }
+        body = parse_block(p, "'{' after the 'for' header");
+        leave(p);
+        s = new_stmt(p, MFL_STMT_FOR, &start);
+        if (s != NULL) {
+            s->name = text_of(&var);
+            s->value = first;
+            s->range_end = end;
+            s->body = body;
+        }
+        break;
+    }
+    case MFL_TOK_LBRACE: {
+        MflStmt *body;
+        if (!enter(p)) {
+            return NULL;
+        }
+        body = parse_block(p, "'{'");
+        leave(p);
+        s = new_stmt(p, MFL_STMT_BLOCK, &start);
+        if (s != NULL) {
+            s->body = body;
+        }
+        break;
+    }
     case MFL_TOK_ELSE:
-    case MFL_TOK_WHILE:
-    case MFL_TOK_FOR:
-    case MFL_TOK_RETURN:
+        error_at(p, &start, "'else' without a matching 'if'");
+        return NULL;
     case MFL_TOK_IMPORT:
-        error_at(p, &start, "'%.*s' is not supported yet (planned for v0.2)", (int)start.length,
-                 start.start);
+        error_at(p, &start, "'import' is not supported yet (modules are planned after v0.2)");
         return NULL;
     default: {
         MflExpr *e = parse_expr(p);
@@ -655,8 +1050,10 @@ static MflStmt *parse_statement(Parser *p)
             MflExpr *value;
             advance(p);
             value = parse_expr(p);
-            if (e->kind != MFL_EXPR_IDENT && e != &p->oom_expr) {
-                error_at(p, &eq, "invalid assignment target (only a variable can be assigned)");
+            if (e->kind != MFL_EXPR_IDENT && e->kind != MFL_EXPR_INDEX && e != &p->oom_expr) {
+                error_at(p, &eq,
+                         "invalid assignment target (only a variable or an array element can be "
+                         "assigned)");
                 return NULL;
             }
             s = new_stmt(p, MFL_STMT_ASSIGN, &start);
@@ -674,7 +1071,7 @@ static MflStmt *parse_statement(Parser *p)
     }
     }
 
-    if (!p->panic && !is_separator(p->cur.kind)) {
+    if (!p->panic && !at_statement_end(p)) {
         error_expected(p, "end of statement (newline or ';')");
     }
     return s;

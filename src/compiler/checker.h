@@ -1,5 +1,11 @@
 /*
- * checker.h - semantic checker for MFL v0.1 (internal API).
+ * checker.h - semantic checker for MFL (internal API).
+ *
+ * v0.2 (gradual typing): every expression gets a static type. When the
+ * type cannot be known before running (unannotated parameters, values
+ * returned by unannotated functions, ...) it is MFL_TYPE_ANY and the VM
+ * checks the operation at run time. Errors that can be proven before
+ * running are reported here, with their position.
  *
  * Runs on a successfully parsed program and:
  *   - resolves names: undefined variables, redeclarations, assignment to
@@ -31,6 +37,20 @@
 
 #define MFL_CHECK_MAX_DIAGNOSTICS 50
 
+/* Signature of a user function (v0.2). */
+struct MflFnSig {
+    MflText  name;
+    int      index;        /* function number (compiler / VM) */
+    int      arity;
+    MflText *param_names;
+    MflType *params;       /* ANY for unannotated parameters */
+    MflType  ret;          /* ANY when not annotated */
+    int      ret_annotated;
+    int      line;
+    int      column;
+    MflStmt *decl;
+};
+
 typedef struct MflSymbol MflSymbol;
 
 struct MflSymbol {
@@ -47,8 +67,19 @@ typedef struct {
     MflDiagnostic *diagnostics; /* in source order */
     int            diagnostic_count;
     int            out_of_memory;
-    MflSymbol     *symbols;
+    MflSymbol     *symbols;       /* globals, slot order */
+    MflFnSig     **functions;     /* by function number */
+    int            function_count;
 } MflCheckResult;
+
+/* Can a value of type `actual` be stored where `declared` is expected? */
+typedef enum {
+    MFL_COMPAT_NO,     /* never (the checker reports an error)  */
+    MFL_COMPAT_YES,    /* always                                */
+    MFL_COMPAT_RUNTIME /* only known at run time: emit a check  */
+} MflCompat;
+
+MflCompat mfl_type_compat(MflType declared, MflType actual);
 
 /* Checks a program produced by a successful mfl_parse(). Returns 1 when
  * there are no errors. Always call mfl_check_free() afterwards. */
@@ -76,7 +107,9 @@ void mfl_check_free(MflCheckResult *result);
 /* "Number", "Quantity[m/s]", "Bool", "String", "Nil", ... */
 void mfl_type_format(MflType type, char *buf, size_t size);
 
-/* One line per declared name: "12:1 let speed: Quantity[m/s]". */
+/* One line per global name, then one per function:
+ *   "12:1 let speed: Quantity[m/s]"
+ *   "3:1 fn heat_input(U: Quantity[V], eta: Any) -> Quantity[kg*m/s^2]" */
 void mfl_check_print_symbols(const MflCheckResult *result, MflWriteFn write, void *ctx);
 
 #endif /* MFL_CHECKER_H */

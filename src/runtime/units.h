@@ -57,14 +57,19 @@ double mfl_scale_convert(double mag, MflScale from, MflScale to);
 typedef enum {
     MFL_UNIT_OK,
     MFL_UNIT_UNKNOWN,
-    MFL_UNIT_UNSUPPORTED /* known name, not available in v0.1 (degC) */
+    MFL_UNIT_UNSUPPORTED /* known name, not available (reserved) */
 } MflUnitStatus;
+
+/* Offset of the Celsius scale: T[K] = T[degC] + 273.15. */
+#define MFL_DEGC_OFFSET 273.15
 
 /* Looks up a unit symbol, with an optional SI prefix (p n u m c d k M G).
  * An exact symbol always wins over a prefixed reading ("min" is minute,
  * "cd" is candela). On success sets *scale (factor to coherent SI) and
- * *dim. */
-MflUnitStatus mfl_unit_lookup(const char *name, size_t length, MflScale *scale, MflDim *dim);
+ * *dim; *affine (may be NULL) is set to 1 for an offset scale (degC: an
+ * absolute temperature, T[K] = T[degC] + MFL_DEGC_OFFSET). */
+MflUnitStatus mfl_unit_lookup(const char *name, size_t length, MflScale *scale, MflDim *dim,
+                              int *affine);
 
 /* Name used to display a value of dimension d that has no unit of its
  * own (units.md section 4): the coherent SI symbol when exactly one

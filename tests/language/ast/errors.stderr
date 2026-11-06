@@ -2,10 +2,8 @@ tests/language/ast/errors.mfl:1:5: error: expected variable name after 'let', fo
 tests/language/ast/errors.mfl:2:7: error: expected '=' after 'x', found '5'
 tests/language/ast/errors.mfl:3:15: error: expected ')' to close '(' at 3:9, found end of line
 tests/language/ast/errors.mfl:4:13: error: expected integer unit exponent, found 'x'
-tests/language/ast/errors.mfl:5:3: error: invalid assignment target (only a variable can be assigned)
-tests/language/ast/errors.mfl:6:1: error: 'if' is not supported yet (planned for v0.2)
+tests/language/ast/errors.mfl:5:3: error: invalid assignment target (only a variable or an array element can be assigned)
 tests/language/ast/errors.mfl:10:11: error: unexpected character
 tests/language/ast/errors.mfl:11:17: error: expected ')' in unit, found '+' (to divide or multiply a quantity by an expression, write e.g. (5 mm) / (...))
 tests/language/ast/errors.mfl:12:9: error: expected expression, found ')'
 tests/language/ast/errors.mfl:13:9: error: expected ')' after arguments, found '2'
-tests/language/ast/errors.mfl:14:1: error: 'fn' is not supported yet (planned for v0.2)

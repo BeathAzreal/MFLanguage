@@ -53,7 +53,9 @@ struct MflState {
     size_t    error_len;
     size_t    error_cap;
     int       error_oom; /* the message itself could not be stored */
+    unsigned long long max_steps;
 };
+
 
 typedef struct {
     char  *name;
@@ -64,6 +66,7 @@ typedef struct {
 struct MflScript {
     char            *source;
     size_t           length;
+    char            *name; /* for run-time error messages */
     MflParseResult   parse;
     MflCheckResult   check;
     MflCompileResult comp;
@@ -152,6 +155,7 @@ const char *mfl_status_name(MflStatus status)
     case MFL_ERR_INPUTS_CHANGED: return "MFL_ERR_INPUTS_CHANGED";
     case MFL_ERR_NOT_RUN: return "MFL_ERR_NOT_RUN";
     case MFL_ERR_INTERNAL: return "MFL_ERR_INTERNAL";
+    case MFL_ERR_RUNTIME: return "MFL_ERR_RUNTIME";
     }
     return "MFL_ERR_UNKNOWN";
 }
@@ -267,6 +271,13 @@ MflState *mfl_state_new(const MflConfig *config)
         S->cfg.user = NULL;
     }
     return S;
+}
+
+void mfl_set_instruction_limit(MflState *S, unsigned long long max_instructions)
+{
+    if (S != NULL) {
+        S->max_steps = max_instructions;
+    }
 }
 
 void mfl_clear_inputs(MflState *S)
@@ -414,6 +425,7 @@ void mfl_script_free(MflScript *script)
     }
     free(script->inputs);
     free(script->source);
+    free(script->name);
     free(script);
 }
 
@@ -438,9 +450,10 @@ static MflScript *compile_script(MflState *S, const char *source, size_t length,
         return NULL;
     }
     sc->source = (char *)malloc(length + 1);
+    sc->name = dup_string(name);
     sc->inputs = (InputSlot *)calloc(S->input_count ? S->input_count : 1, sizeof *sc->inputs);
     decl = (MflCheckInput *)calloc(S->input_count ? S->input_count : 1, sizeof *decl);
-    if (sc->source == NULL || sc->inputs == NULL || decl == NULL) {
+    if (sc->source == NULL || sc->name == NULL || sc->inputs == NULL || decl == NULL) {
         goto oom;
     }
     if (length > 0) {
@@ -530,6 +543,7 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
     const MflChunk *chunk;
     const MflSymbol *sym;
     MflVmStatus vs;
+    MflVmError verr;
     size_t i;
     size_t n;
 
@@ -567,15 +581,30 @@ MflStatus mfl_script_run(MflState *S, MflScript *sc)
         }
         to = sc->inputs[i].unit == MFL_NO_UNIT ? mfl_scale_one()
                                                : chunk->units[sc->inputs[i].unit].scale;
+        memset(&init[i], 0, sizeof init[i]);
         init[i].kind = MFL_VAL_NUMBER;
         init[i].unit = sc->inputs[i].unit;
+        init[i].dim = in->dim;
+        init[i].affine = 0;
         init[i].as.number = mfl_scale_convert(in->value, in->scale, to);
     }
 
-    vs = mfl_vm_run_globals(chunk, init, sc->input_count, snap, S->cfg.output, S->cfg.user,
-                            S->cfg.memory_limit);
+    {
+        MflVmLimits limits;
+        limits.memory_limit = S->cfg.memory_limit;
+        limits.max_steps = S->max_steps;
+        vs = mfl_vm_execute(chunk, init, sc->input_count, snap, S->cfg.output, S->cfg.user,
+                            &limits, &verr);
+    }
     if (vs == MFL_VM_OUT_OF_MEMORY) {
         goto oom;
+    }
+    if (vs == MFL_VM_RUNTIME_ERROR) {
+        free(init);
+        free(snap);
+        free(results);
+        return fail(S, MFL_ERR_RUNTIME, "%s:%d:%d: runtime error: %s\n", sc->name, verr.line,
+                    verr.column, verr.message);
     }
     if (vs != MFL_VM_OK) {
         free(init);

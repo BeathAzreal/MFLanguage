@@ -1,0 +1,9 @@
+# Acceptance: passing a power where a speed is expected is rejected
+# before running, at the argument's position.
+fn heat_input(voltage: Quantity[V], current: Quantity[A], speed: Quantity[mm/s],
+              efficiency: Number) -> Quantity[J/mm] {
+    return efficiency * voltage * current / speed
+}
+
+let power = 0.8 * 20 V * 150 A
+print(heat_input(20 V, 150 A, power, 0.8))

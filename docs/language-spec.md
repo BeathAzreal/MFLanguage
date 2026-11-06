@@ -1,8 +1,9 @@
-# MFL Language Specification — Draft 0
+# MFL Language Specification — v0.2
 
-> **Status:** preliminary proposal. Nothing in this document is implemented
-> yet. Syntax and semantics may change before v0.1. Sections marked
-> *(open question)* are explicitly undecided.
+> **Status:** sections marked **Implemented** describe the behaviour of the
+> current interpreter (v0.2, pre-alpha) and are covered by tests in
+> `tests/`. Syntax and semantics may still change before v1.0. Sections
+> marked *(open question)* are explicitly undecided.
 
 ## 1. Design principles
 
@@ -25,7 +26,7 @@
 > `mfl --tokens file.mfl`.
 
 - Encoding: UTF-8; a leading byte-order mark is ignored. Non-ASCII
-  characters are allowed **only inside strings and comments** in v0.1.
+  characters are allowed **only inside strings and comments** (v0.1, v0.2).
 - Identifiers are ASCII: `[A-Za-z_][A-Za-z0-9_]*`, case-sensitive.
 - Line comments start with `#` and run to the end of the line.
 - Whitespace: space, tab, carriage return. `\r\n` behaves like `\n`.
@@ -86,7 +87,7 @@ Number details:
 
 Unit symbols (`V`, `A`, `mm`, `J`, …) are lexed as identifiers; the parser
 decides whether an identifier is a unit (see §5). `µ`/`Ω` cannot be used
-in v0.1 code; use `u`/`ohm` (see `units.md`).
+in code; use `u`/`ohm` (see `units.md`).
 
 ### 3.1 Lexical errors
 
@@ -110,52 +111,91 @@ and scanning continues, so several errors are reported at once:
 | `Bool` | `true` / `false` |
 | `String` | immutable UTF-8 text |
 | `Nil` | absence of value |
-| `Array` | ordered, growable sequence *(v0.2)* |
-| `Function` | first-class function / closure *(v0.2)* |
+| `Array` | ordered, growable, homogeneous sequence (§8.4) |
+| `Function` | first-class function value, no closures (§8.1) |
 
-A `Number` is semantically a dimensionless `Quantity`.
+A `Number` is semantically a dimensionless `Quantity`. A `Quantity` in
+`degC` is an *absolute* temperature (`docs/units.md` §5).
 
-### 4.0 Static checking in v0.1
+### 4.0 Static checking
 
-> **Implemented** (semantic checker, `src/compiler/checker.c`; inspect with
-> `mfl --types file.mfl`).
+> **Implemented.** Inspect inferred types with `mfl --types file.mfl`.
 
-v0.1 has no user functions and no control flow, so the type of every
-expression, including the **dimension** of every quantity, is known before
-the program runs, and all checks below are done before execution:
+Every expression gets a type before the program runs. When the type can be
+known — literals, annotated names, operations on known types, calls of
+functions with an annotated return type — all the rules below are checked
+**before running** and reported as `file:line:col: error: ...`. When it
+cannot be known (§4.1), the same rules are checked **when the operation
+runs** and reported as `file:line:col: runtime error: ...`.
 
 | Rule | Example error |
 |------|---------------|
-| Names must be declared before use; no redeclaration | `undefined variable 'y'`, `'U' is already declared at 2:1` |
-| `let` bindings cannot be assigned | `cannot assign to 'U': it is declared with 'let' …` |
-| A `var` keeps the type and dimension of its initial value | `cannot assign Quantity[s] to 'T', which is a Quantity[K] …` |
+| Names must be declared before use (top-level code); no redeclaration in the same scope | `undefined variable 'y'`, `'U' is already declared at 2:1` |
+| `let` bindings, parameters and loop variables cannot be assigned | `cannot assign to 'p': it is a parameter (immutable)` |
+| A `var` keeps the type and dimension of its initial value (or its annotation) | `cannot assign Quantity[s] to 'T', which is a Quantity[K] (declared at 1:1)` |
 | `+ - %` and `< <= > >=` need numbers with equal dimensions | `cannot add Quantity[kg*m^2/(s^3*A)] and Quantity[A]: dimensions differ` |
 | `* /` combine dimensions | `W/(m*K) / (kg/m^3 * J/(kg*K))` → `Quantity[m^2/s]` |
-| `^` needs a dimensionless exponent; if the base has a dimension, an integer literal | `the exponent of a Quantity[m] must be an integer literal …` |
-| `== !=` need the same type (numbers: same dimension); anything may be compared with `nil` | `cannot compare Number and String` |
-| `and or not` need `Bool` (no "truthy" numbers) | `'not' needs a Bool, found Number` |
+| `^` needs a dimensionless exponent; if the base has a dimension, an integer literal (statically) or a whole number (at run time) | `the exponent of a Quantity[m] must be an integer literal …` |
+| `== !=` need the same type (numbers: same dimension); anything may be compared with `nil`; arrays cannot be compared | `cannot compare Number and String` |
+| `and or not` and conditions of `if`/`while` need `Bool` (no "truthy" numbers) | `the condition of 'if' must be a Bool, found Number` |
 | `.to(u)` / `.value_in(u)` need a unit with the same dimension | `cannot convert Quantity[m/s] to a unit of dimension kg*m/s^2` |
-| `print` is the only callable; it cannot be redefined or used as a value | `undefined function 'f' (v0.1 has only the built-in 'print')` |
+| Calls: exact number of arguments; arguments compatible with annotated parameters | `argument 3 of 'heat_input' ('speed') must be Quantity[m/s] (declared as Quantity[mm/s]), found Quantity[kg*m^2/s^3]` |
+| Returns compatible with the annotated return type; an annotated function must return on every path | `function 'f' is declared to return Number, but can reach the end of its body without 'return'` |
+| Array elements: same type and dimension | `array elements must all have the same type and dimension: element 2 is Quantity[s], …` |
+| Absolute temperatures (degC): only `±` a difference, `degC − degC`, comparisons, `.to()` | `cannot add two absolute temperatures (degC + degC) …` |
 
 Types are written `Number` (dimensionless), `Quantity[<SI base units>]`,
-`Bool`, `String`, `Nil`. Dimensions are always shown in SI base units
-(`kg*m/s^2`), because one dimension can have several names (J/m and N).
+`Quantity[degC]` (absolute temperature), `Bool`, `String`, `Nil`,
+`Array[T]`, `Function`, and `Any` (known only at run time). Dimensions are
+shown in SI base units (`kg*m/s^2`), because one dimension can have several
+names (J/m and N); where an annotation was written differently, messages add
+it: `(declared as Quantity[J/mm])`.
 
-### 4.1 Gradual typing *(v0.2+)*
+### 4.1 Gradual typing
 
-Annotations are optional. Without them, checks happen at run time. With them,
-the compiler checks statically where possible:
+> **Implemented.**
+
+Annotations are optional (`let x: T = …`, `fn f(p: T) -> R`). Where they
+are missing, the type is **inferred** when possible and is **`Any`**
+otherwise. `Any` appears for:
+
+- unannotated parameters (inside the function);
+- the result of a call to a function without a return annotation, or of a
+  call through a value of unknown type;
+- operations whose result depends on an `Any` operand (e.g. `x * y` with
+  `x: Any`). `x + 1 m` with `x: Any` has the type `Quantity[m]`, because
+  `+` requires equal dimensions.
+
+Rules for code without annotations:
+
+1. The program is accepted if nothing is provably wrong; every operation on
+   `Any` values is checked when it runs, with the same rules and messages.
+2. A value of type `Any` assigned to an annotated name, passed to an
+   annotated parameter, or returned from a function with an annotated
+   return type is checked at that point when it runs.
+3. A `var` initialised with an `Any` value keeps the type and dimension of
+   its first value (ADR-017 at run time).
+4. Conditions, `and`/`or` operands, range bounds and the iterable of `for`
+   are checked when they run if their type is `Any`.
 
 ```mfl
 fn heat_input(eta: Number, U: Quantity[V], I: Quantity[A], v: Quantity[mm/s])
     -> Quantity[J/mm] {
-    return eta * U * I / v
+    return eta * U * I / v               # checked before running
 }
+
+fn add(a, b) { return a + b }            # a, b: Any
+print(add(1 m, 2 mm))                    # 1.002 m
+print(add(1 m, 2 s))                     # runtime error: cannot add Quantity[m] and Quantity[s]
 ```
 
 `Quantity[unit]` constrains the **dimension**, not the exact unit: passing
-`0.3 m/min` where `Quantity[mm/s]` is expected is valid (same dimension
-`L·T⁻¹`).
+`0.3 m/min` where `Quantity[mm/s]` is expected is valid. `Quantity[degC]` is
+an absolute temperature, `Quantity[K]` a temperature (or difference) in kelvin.
+
+Supported annotations: `Number`, `Bool`, `String`, `Quantity[unit]`,
+`Array[T]` (nested: `Array[Array[Number]]`). There is no annotation for
+functions or `Any`: leave the annotation out instead.
 
 ## 5. Quantities and unit expressions
 
@@ -168,7 +208,7 @@ let k     = 45 W/(m*K)
 let rho   = 7850 kg/m^3
 ```
 
-> **Implemented** (v0.1): parsing, unit resolution and dimension checks
+> **Implemented**: parsing, unit resolution and dimension checks
 > (§4.0), and exact conversion at run time (`docs/units.md` §6).
 
 Unit expression grammar:
@@ -201,7 +241,7 @@ shadow the second.
 
 A space between number and unit is optional: `5mm` and `5 mm` are the same.
 Exponents must be integer literals (`m^2.5` and `m^x` are syntax errors).
-`%` is **not** a unit in v0.1 (it is the remainder operator); write `0.5`
+`%` is **not** a unit (it is the remainder operator); write `0.5` or `50 percent`
 instead of `50 %`.
 
 ### 5.1 Conversion
@@ -209,30 +249,42 @@ instead of `50 %`.
 ```mfl
 energy.to(J/mm)       # convert to a compatible unit; error if dimensions differ
 energy.value_in(J/mm) # plain Number in the given unit
-energy.dim            # dimension descriptor (planned, not in v0.1)
+energy.dim            # dimension descriptor (planned, not implemented)
 ```
 
 The argument of `.to`/`.value_in` is read as a **unit expression** (unit
 names, `*`, `/`, integer `^`), not as an ordinary expression. Dimension
 compatibility is checked before running (§4.0).
 
-## 6. Declarations
+## 6. Declarations and scope
 
-> **Parsing implemented** (v0.1).
+> **Implemented.**
 
 ```mfl
-let x = 10 mm      # immutable binding
-var t = 0 s        # mutable binding
-t = t + 0.1 s      # assignment
+let x = 10 mm               # immutable binding
+var t = 0 s                 # mutable binding
+t = t + 0.1 s               # assignment
+let v: Quantity[m/s] = 5 mm/s   # annotated (§4.1)
+a[2] = 3 mm                 # array element (§8.4)
 ```
 
-Only a plain variable can be assigned in v0.1 (`a.b = 1` and `f() = 1` are
-syntax errors). Whether the variable exists and is mutable is checked by a
-later stage.
+- **Globals** are `let`/`var` at the top level, outside any block. They are
+  visible in top-level code after their declaration and in every function
+  body. Reading a global from a function before its declaration has run is
+  a run-time error: `'limit' is used before its declaration has run`.
+- **Locals** are declared inside a block `{ … }` or a function. They are
+  visible from their declaration to the end of the enclosing block.
+- A local may **shadow** a global or a function of the same name; it may not
+  redeclare a name already declared in the same function (including its
+  parameters and enclosing blocks): `'b' is already declared in this
+  function at 17:11`. Sibling blocks may reuse a name.
+- Parameters and loop variables are immutable.
+- Built-in names (`print`, `len`, `push`) cannot be declared.
+- `let` fixes the binding, not the contents of an array (§8.4).
 
 ## 7. Expressions
 
-> **Parsing implemented** (v0.1).
+> **Implemented.**
 
 Precedence (high → low):
 
@@ -256,29 +308,110 @@ Dimensional rules: `+ - < <= > >= == !=` require equal dimensions;
 `* /` combine dimensions; `^` requires a dimensionless, compile-time-known
 exponent when the base has a dimension.
 
-## 8. Control flow and functions *(v0.2)*
+## 8. Control flow, functions and arrays
 
-Not parsed in v0.1: a statement starting with `fn`, `if`, `else`, `while`,
-`for`, `return` or `import` is reported as "not supported yet (planned for
-v0.2)" and skipped, including its braced block.
+> **Implemented** (v0.2). `break`, `continue` and nested functions/closures
+> are not part of v0.2 (§12).
+
+### 8.1 Functions
 
 ```mfl
-if T > 1500 degC { print("melted") } else { print("solid") }
+fn name(p1: T1, p2, ...) -> R {    # annotations optional
+    ...
+    return value
+}
+```
+
+- Declared at the **top level** only (`functions can only be declared at the
+  top level (no nested functions in v0.2)`). Functions are **hoisted**: a
+  function can be called anywhere, including before its declaration and
+  from other functions (recursion and mutual recursion are allowed).
+- Calls need exactly the declared number of arguments (no defaults, no
+  variadic functions).
+- A function is a value: `let g = twice; apply(g, 4 s)`; printing it shows
+  `<fn twice>`. Calls through a value are checked when they run (arity,
+  annotated parameters).
+- No closures: a function body sees its parameters and locals, the globals
+  and the other functions — never the locals of another call.
+
+### 8.2 Return values
+
+| Function | `return expr` | `return` (no value) | End of body reached |
+|----------|---------------|---------------------|---------------------|
+| with `-> R` | must be compatible with `R` | compile error | **compile error** (every path must return) |
+| without `-> R` | any value | returns `nil` | returns `nil` |
+
+"Every path returns" is decided syntactically: a `return`, a block that
+always returns, or an `if` with an `else` whose branches all return.
+Loops never count. `return` outside a function is a syntax error.
+
+**Call depth:** at most 1000 nested calls; deeper recursion is the run-time
+error `call depth limit of 1000 exceeded (endless recursion?)`, reported at
+the call. The VM never overflows the C stack (calls do not recurse in C).
+
+### 8.3 Conditions and loops
+
+```mfl
+if q < 0.5 kJ/mm {
+    print("low")
+} else if q < 1.5 kJ/mm {
+    print("medium")
+} else {
+    print("high")
+}
 
 while t < 10 s { t = t + dt }
 
-for i in 0..n { ... }
-
-fn area(r) { return pi * r^2 }
+for i in 0..n { ... }        # i = 0, 1, ..., while i < n   (half-open)
+for v in speeds { ... }      # each element, in order
 ```
 
-## 9. Built-ins (v0.1)
+- Conditions must be `Bool`. `else` may start the line after `}`.
+- `for i in a..b`: `a` and `b` are plain numbers (dimensionless), evaluated
+  once; `i` starts at `a` and grows by 1 while `i < b`. `0..0` runs zero
+  times; `0..2.5` gives 0, 1, 2.
+- `for x in array`: visits indices 0, 1, … while the index is below the
+  array's **current** length (elements pushed during the loop are visited).
+- Every block (`if`, `else`, `while`, `for`, `fn`, or a bare `{ … }`) has its
+  own scope. The loop variable belongs to the loop body.
+- `and` / `or` short-circuit: the right operand is not evaluated when the
+  left one decides.
+
+### 8.4 Arrays
+
+```mfl
+let speeds = [5 mm/s, 0.005 m/s, 0.3 m/min]   # Array[Quantity[m/s]]
+print(speeds[0], len(speeds))                  # 5 mm/s 3
+var log = []                                   # empty: element type fixed by the first push
+push(log, "first")
+speeds[1] = 6 mm/s
+```
+
+- **Homogeneous:** all elements have the same type; numbers the same
+  dimension (and absolute-temperature flag). Each element keeps its own
+  unit, so equivalent quantities in different units share one array.
+  Mixing dimensions is an error (before running if known, otherwise when
+  the array is built, an element is stored or pushed).
+- **Indices** start at 0 and must be whole, dimensionless numbers. Any other
+  index is a run-time error with its position: `index 3 is out of range for
+  an array of length 3 (valid indices: 0 to 2)`, `array index must be a whole
+  number, found 1.5`.
+- **References:** `let b = a` refers to the same array; `push(b, 3)` changes
+  `a` too. `let` fixes the binding, not the contents.
+- `==` / `!=` on arrays is an error (compare the elements).
+- Printing: `[5 mm/s, 0.005 m/s]`; strings inside arrays are quoted.
+- Arrays live until the end of the run (no garbage collector yet); memory
+  is bounded by the host's limit.
+
+## 9. Built-ins
 
 > **Implemented** (compiler `src/compiler/compiler.c`, VM `src/vm/vm.c`).
 
 | Name | Description |
 |------|-------------|
 | `print(x, ...)` | Print values separated by single spaces, then a newline; returns `nil` |
+| `len(a)` | Number of elements of an array |
+| `push(a, x)` | Append `x` to array `a` (same type and dimension as its elements); returns `nil` |
 | `.to(unit)` | Same quantity, expressed in `unit` (see §5.1) |
 | `.value_in(unit)` | Plain `Number`: the magnitude in `unit` |
 
@@ -297,8 +430,14 @@ program; reading literals is locale-independent too.
 ### 9.2 Arithmetic semantics
 
 - All numbers are IEEE 754 binary64. Division by zero gives `inf`, `-inf`
-  or `nan`, as in C, Fortran or NumPy; v0.1 has **no run-time errors**,
-  because names, types and dimensions are checked before running.
+  or `nan`, as in C, Fortran or NumPy (it is not an error; test the divisor
+  with `if` when it matters, as `examples/welding/heat_input_v02.mfl` does).
+- Run-time errors (v0.2) exist only where something could not be checked
+  before running: operations on `Any` values, array indices, calls through
+  values, call depth, globals read before their declaration ran, and the
+  optional instruction limit of the embedding API. They stop the program
+  and are reported as `file:line:col: runtime error: message`; output
+  printed before stays.
 - `a % b` is the C `fmod`: the result has the sign of `a` (`-7 % 3` is `-1`).
 - `0.1 + 0.2 == 0.3` is `false`, as in any binary floating-point system.
 - `and`/`or` short-circuit: the right operand is not evaluated when the
@@ -328,9 +467,29 @@ Derivation: `0.8 · 20 V · 150 A / 5 mm/s = 480 V·A·s/mm = 480 W·s/mm = 480 
 Files: `tests/language/conformance_heat_input.mfl` /
 `.expected`. This test becomes mandatory for the v0.1 release.
 
-## 11. Open questions
+## 11. Conformance example #2 — v0.2 acceptance demonstration
 
-- Temperature: affine units (`degC`) vs. absolute (`K`) — see `units.md` §5.
-- Should integer types exist, or only binary64? (Draft: only binary64 in v0.1.)
+`examples/welding/heat_input_v02.mfl` (checked by the `acceptance_*` CTest
+tests) combines an annotated function, an array of speeds in different
+units, loops, a zero-speed branch, unannotated code and degC. Its output:
+
+```
+v = 5 mm/s -> 480 J/mm
+v = 0.005 m/s -> 480 J/mm
+v = 10 mm/s -> 240 J/mm
+v = 0 mm/s -> arc not moving: heat input not defined, skipped
+computed 3 of 4 cases; mean = 400 J/mm
+unchecked v = 0: inf J/mm
+interpass 150 degC is 100 delta_degC below the limit 250 degC
+```
+
+## 12. Open questions
+
+- ~~Temperature: affine units (`degC`) vs. absolute (`K`)~~ — resolved in
+  v0.2, see `units.md` §5.
+- `break` / `continue`; nested functions and closures.
+- Should integer types exist, or only binary64? (Only binary64 so far;
+  indices are whole binary64 numbers.)
 - Module syntax: `import welding` vs. `use welding.*`.
-- Vector/matrix literals and element-wise units.
+- Vector/matrix types with element-wise units (beyond homogeneous arrays).
+- A garbage collector for arrays (they live until the end of a run).

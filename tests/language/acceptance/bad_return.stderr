@@ -1,0 +1,1 @@
+tests/language/acceptance/bad_return.mfl:5:33: error: the return value of 'heat_input' must be Quantity[kg*m/s^2] (declared as Quantity[J/mm]), found Quantity[kg*m^2/s^3]

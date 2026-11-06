@@ -1,0 +1,3 @@
+fn report() { return limit }
+print(report())
+let limit = 5

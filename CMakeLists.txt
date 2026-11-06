@@ -236,6 +236,51 @@ if(MFL_BUILD_TESTS)
     mfl_add_run_test(bytecode_heat_input "--bytecode;examples/welding/heat_input.mfl"
         tests/language/run/heat_input.bytecode)
 
+    # Program tests with expected stdout, stderr and exit code (run from
+    # the source directory, so messages show relative paths).
+    function(mfl_add_program_test name source stdout stderr exit_code)
+        add_test(NAME ${name}
+            COMMAND ${CMAKE_COMMAND}
+                -DPROGRAM=$<TARGET_FILE:mfl>
+                "-DARGS=${source}"
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/${stdout}
+                -DEXPECTED_STDERR=${PROJECT_SOURCE_DIR}/${stderr}
+                -DEXPECTED_EXIT=${exit_code}
+                -DWORKDIR=${PROJECT_SOURCE_DIR}
+                -P ${PROJECT_SOURCE_DIR}/tests/cmake/compare_output.cmake)
+    endfunction()
+
+    # v0.2 error tests: compile-time and run-time errors with positions.
+    file(GLOB MFL_ERROR_TESTS CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/tests/language/errors/*.mfl)
+    foreach(src ${MFL_ERROR_TESTS})
+        get_filename_component(base ${src} NAME_WE)
+        mfl_add_program_test(error_${base} tests/language/errors/${base}.mfl
+            tests/language/errors/${base}.stdout tests/language/errors/${base}.stderr 1)
+    endforeach()
+
+    # v0.2 acceptance demonstration (examples/welding/heat_input_v02.mfl).
+    set(MFL_DEMO examples/welding/heat_input_v02.mfl)
+    mfl_add_program_test(acceptance_demo_output ${MFL_DEMO}
+        tests/language/run/heat_input_v02.expected tests/cmake/empty.txt 0)
+    foreach(case
+            "5mm_s_gives_480|v = 5 mm/s -> 480 J/mm\n"
+            "0_005m_s_gives_480|v = 0[.]005 m/s -> 480 J/mm\n"
+            "10mm_s_gives_240|v = 10 mm/s -> 240 J/mm\n"
+            "zero_speed_branch|v = 0 mm/s -> arc not moving: heat input not defined, skipped\n")
+        string(REPLACE "|" ";" parts "${case}")
+        list(GET parts 0 case_name)
+        list(GET parts 1 case_regex)
+        add_test(NAME acceptance_${case_name}
+            COMMAND $<TARGET_FILE:mfl> ${MFL_DEMO}
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR})
+        set_tests_properties(acceptance_${case_name} PROPERTIES
+            PASS_REGULAR_EXPRESSION "${case_regex}")
+    endforeach()
+    foreach(base power_as_speed bad_return index_out_of_range)
+        mfl_add_program_test(acceptance_${base} tests/language/acceptance/${base}.mfl
+            tests/language/acceptance/${base}.stdout tests/language/acceptance/${base}.stderr 1)
+    endforeach()
+
     if(MFL_BUILD_EXAMPLES)
         add_test(NAME run_embed_example
             COMMAND ${CMAKE_COMMAND}

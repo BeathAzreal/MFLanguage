@@ -1,8 +1,8 @@
 # MFL Architecture — Draft 0
 
-> **Status:** sections 2–4 and 9 are implemented for the v0.1 subset
-> (lexer, parser, checker, compiler, VM); sections 5–8 (modules, embedding
-> API, WebAssembly, library integration) are still plans.
+> **Status:** sections 2–4, 6 and 9 are implemented (v0.2: lexer, parser,
+> checker, compiler, VM, embedding API); sections 5, 7 and 8 (modules,
+> WebAssembly, library integration) are still plans.
 
 ## 1. Goals and constraints
 
@@ -39,49 +39,65 @@ and future tooling (formatter, LSP).
 
 ## 3. Value representation
 
-> **Implemented** (v0.1, `src/compiler/chunk.h`). This replaces the first
-> draft, which stored every quantity in SI with its dimension.
+> **Implemented** (`src/compiler/chunk.h`). v0.2 added the dimension at
+> run time, arrays and functions.
 
 ```c
 typedef struct {
-    MflValueKind kind;   /* NIL, BOOL, NUMBER, STRING */
-    int          unit;   /* NUMBER: index into the chunk's unit table, or none */
-    union { double number; int boolean; struct { const char *chars; size_t length; } string; } as;
+    MflValueKind  kind;   /* NIL BOOL NUMBER STRING ARRAY FUNCTION (UNSET: global not yet set) */
+    int           unit;   /* NUMBER: index into the chunk's unit table, or none (SI) */
+    MflDim        dim;    /* NUMBER: 7 SI exponents */
+    unsigned char affine; /* NUMBER: absolute temperature (degC) */
+    union { double number; int boolean; struct { const char *chars; size_t length; } string;
+            MflArray *array; int function; } as;
 } MflValue;
 
 typedef struct { double num, den; int exp10; } MflScale;  /* exact: num/den * 10^exp10 */
-typedef struct { const char *text; MflScale scale; } MflUnitEntry;
+typedef struct { const char *text; MflScale scale; MflDim dim; unsigned char affine;
+                 double offset; } MflUnitEntry;           /* offset: 273.15 for degC */
 ```
 
 - A number stores its magnitude **in its display unit** (`5 mm/s` is `5`
   with unit "mm/s"); arithmetic on different units converts both operands
   to coherent SI first. Printing never re-converts, so literals print as
-  written.
-- **Dimensions are not stored at run time**: the checker has proven every
-  operation consistent (spec §4.0), so the VM does no dimension work.
-- *(open question)* rational exponents (e.g. `m^(1/2)`) — v0.1 uses integers.
+  written; a result without a unit prints with the SI name of its dimension.
+- **Dimensions are stored at run time** (since v0.2): with gradual typing
+  some operations can only be checked when they run (spec §4.1). For fully
+  annotated or inferred code the checks never fail, because the checker
+  already proved them.
+- Arrays are heap objects owned by the run (freed when it ends).
+- *(open question)* rational exponents (e.g. `m^(1/2)`) — integers only.
 
 ## 4. Bytecode VM
 
-> **Implemented** (v0.1, `src/compiler/`, `src/vm/`; listing with
+> **Implemented** (`src/compiler/`, `src/vm/`; listing with
 > `mfl --bytecode file.mfl`).
 
-- Stack-based, 1-byte opcodes, operands as 16-bit little-endian integers.
-- v0.1 opcodes: `CONST, NIL, TRUE, FALSE, POP, GET_GLOBAL, SET_GLOBAL, ADD,
-  SUB, MUL, DIV, MOD, POW, NEG, NOT, EQ, NE, LT, LE, GT, GE, JUMP_IF_FALSE,
-  JUMP_IF_TRUE, DEFAULT_UNIT, CONVERT, VALUE_IN, PRINT, HALT`. Locals,
-  loops and calls (`GET_LOCAL`, `JUMP`, `LOOP`, `CALL`, `RETURN`) come with
-  functions and control flow in v0.2.
-- Quantity literals compile to a constant holding the literal magnitude
-  and its unit. `DEFAULT_UNIT` gives an arithmetic result its coherent SI
-  display unit; `CONVERT`/`VALUE_IN` re-express a value in another unit.
-- The compiler computes the exact maximum stack depth; the VM allocates the
-  stack and globals once, validates every instruction, operand and stack
-  access, and reports `MFL_VM_INVALID_CODE` for damaged bytecode instead of
+- Stack-based, 1-byte opcodes, 0–2 operands of 16 bits (little-endian).
+  Every instruction records the source line and column it came from.
+- Opcodes (v0.2): `CONST NIL TRUE FALSE POP GET_GLOBAL SET_GLOBAL GET_LOCAL
+  SET_LOCAL ADD SUB MUL DIV MOD POW NEG NOT EQ NE LT LE GT GE JUMP
+  JUMP_IF_FALSE JUMP_IF_TRUE LOOP CONVERT VALUE_IN CALL RETURN PRINT LEN PUSH
+  ARRAY INDEX SET_INDEX CHECK_TYPE CHECK_LIKE_GLOBAL CHECK_LIKE_LOCAL HALT`.
+  (`DEFAULT_UNIT` of v0.1 was removed: results print from their dimension.)
+- Layout: the main program first, ending in `HALT`, then each function.
+  A call places the callee and its arguments on the value stack; the
+  arguments become the first local slots of the new frame. The compiler
+  computes each frame's maximum stack depth; the VM grows the value stack
+  and the frame array on demand, up to 1000 nested calls (a run-time error
+  beyond that) and within the host's memory limit. Calls do not recurse in
+  C, so deep MFL recursion cannot overflow the C stack.
+- Gradual typing: the compiler emits `CHECK_TYPE` (against a type
+  descriptor) or `CHECK_LIKE_*` (same type as the variable's current value)
+  where the checker returned `MFL_COMPAT_RUNTIME`; every operation also
+  re-checks its operands.
+- Run-time errors carry the source position of the failing instruction.
+  An optional instruction limit stops endless loops (embedding API).
+- The VM validates every instruction, operand and stack access, and
+  reports `MFL_VM_INVALID_CODE` for damaged bytecode instead of
   misbehaving. All output goes through a host-supplied write callback.
-- Memory: tracing mark-and-sweep GC for heap objects (strings, arrays,
-  closures). Allocation goes through an allocator supplied by the host
-  (`MflAllocFn`) so games can control memory.
+- Memory (planned): a garbage collector for arrays and a host-supplied
+  allocator (`MflAllocFn`). Today arrays live until the end of a run.
 
 ## 5. Module system
 
@@ -146,10 +162,22 @@ core.
 
 ## 9. Error reporting
 
-All errors carry `file:line:column`, a category (`SyntaxError`,
-`DimensionError`, `TypeError`, `RuntimeError`) and, for dimension errors,
-both dimensions in readable form:
+> **Implemented.** (The first draft proposed named categories such as
+> `DimensionError`; the implementation uses two kinds, distinguished by
+> when they are found.)
+
+Every error carries `file:line:column` and a readable message; dimensions
+are written in SI base units:
 
 ```
-heat.mfl:4:18: DimensionError: cannot add V (M·L²·T⁻³·I⁻¹) and A (I)
+heat.mfl:4:18: error: cannot add Quantity[kg*m^2/(s^3*A)] and Quantity[A]: dimensions differ
+heat.mfl:7:7: runtime error: index 3 is out of range for an array of length 3 (valid indices: 0 to 2)
 ```
+
+- `error:` — found before running (syntax, names, types, dimensions); all
+  of them are reported, sorted by position, up to 50.
+- `runtime error:` — found while running (v0.2: values of type `Any`,
+  indices, call depth, ...); the run stops at the first one.
+
+The CLI exits with status 1 in both cases; the embedding API returns
+`MFL_ERR_PROGRAM` or `MFL_ERR_RUNTIME` with the same text.

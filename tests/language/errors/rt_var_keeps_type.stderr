@@ -1,0 +1,1 @@
+tests/language/errors/rt_var_keeps_type.mfl:8:1: runtime error: cannot assign Quantity[s] to 'x', which holds a Quantity[m] (a variable keeps its type and dimension)

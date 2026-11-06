@@ -1,0 +1,22 @@
+tests/language/errors/compile_v02.mfl:3:1: error: function 'no_return' is declared to return Number, but can reach the end of its body without 'return'
+tests/language/errors/compile_v02.mfl:4:32: error: 'bare' must return a Number; 'return' needs a value
+tests/language/errors/compile_v02.mfl:5:7: error: 'f' takes 1 argument, but 2 were given
+tests/language/errors/compile_v02.mfl:6:9: error: argument 1 of 'f' ('x') must be Quantity[m], found Quantity[s]
+tests/language/errors/compile_v02.mfl:7:4: error: the condition of 'if' must be a Bool, found Number (write e.g. x > 0)
+tests/language/errors/compile_v02.mfl:8:7: error: the condition of 'while' must be a Bool, found String (write e.g. x > 0)
+tests/language/errors/compile_v02.mfl:9:10: error: range bounds must be plain numbers (e.g. 0..n), found Quantity[s]
+tests/language/errors/compile_v02.mfl:10:10: error: 'for' can iterate over an array or a range a..b, found Number
+tests/language/errors/compile_v02.mfl:11:19: error: array elements must all have the same type and dimension: element 2 is Quantity[s], but the first element is Quantity[m]
+tests/language/errors/compile_v02.mfl:13:15: error: cannot push Quantity[kg] into an array of Quantity[m]
+tests/language/errors/compile_v02.mfl:14:17: error: array index must be a plain number (0, 1, 2, ...), found Quantity[m]
+tests/language/errors/compile_v02.mfl:15:11: error: cannot assign to 'p': it is a parameter (immutable)
+tests/language/errors/compile_v02.mfl:16:17: error: cannot assign to 'j': it is a loop variable (immutable)
+tests/language/errors/compile_v02.mfl:17:22: error: 'b' is already declared in this function at 17:11 (as a variable)
+tests/language/errors/compile_v02.mfl:18:1: error: 'len' is a built-in function and cannot be redefined
+tests/language/errors/compile_v02.mfl:19:19: error: cannot add two absolute temperatures (degC + degC); add a difference in K or delta_degC instead
+tests/language/errors/compile_v02.mfl:20:23: error: cannot multiply an absolute temperature in degC; convert it with .to(K) first, or use a difference (K or delta_degC)
+tests/language/errors/compile_v02.mfl:21:15: error: cannot negate an absolute temperature in degC; convert it with .to(K) first, or use a difference (K or delta_degC)
+tests/language/errors/compile_v02.mfl:22:26: error: the value of 'wrong' must be Quantity[s], found Quantity[m]
+tests/language/errors/compile_v02.mfl:23:16: error: arrays cannot be compared with '==' (compare their elements)
+tests/language/errors/compile_v02.mfl:25:1: error: cannot call 'notfn': it is a Number, not a function
+tests/language/errors/compile_v02.mfl:26:18: error: 'degC' can only be used on its own; use K or delta_degC in compound units such as W/(m*K)

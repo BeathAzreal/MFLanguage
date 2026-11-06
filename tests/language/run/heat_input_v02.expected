@@ -1,0 +1,7 @@
+v = 5 mm/s -> 480 J/mm
+v = 0.005 m/s -> 480 J/mm
+v = 10 mm/s -> 240 J/mm
+v = 0 mm/s -> arc not moving: heat input not defined, skipped
+computed 3 of 4 cases; mean = 400 J/mm
+unchecked v = 0: inf J/mm
+interpass 150 degC is 100 delta_degC below the limit 250 degC

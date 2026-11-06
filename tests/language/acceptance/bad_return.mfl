@@ -1,0 +1,8 @@
+# Acceptance: returning a quantity that does not match the signature
+# (a power, W, where an energy per length, J/mm, is declared) is rejected.
+fn heat_input(voltage: Quantity[V], current: Quantity[A], speed: Quantity[mm/s],
+              efficiency: Number) -> Quantity[J/mm] {
+    return efficiency * voltage * current
+}
+
+print(heat_input(20 V, 150 A, 5 mm/s, 0.8))

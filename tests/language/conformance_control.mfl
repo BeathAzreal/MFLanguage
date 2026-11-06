@@ -1,0 +1,62 @@
+# Conformance (v0.2): if / else if / else, while, for, blocks and scope.
+
+fn classify(q: Quantity[kJ/mm]) -> String {
+    if q < 0.5 kJ/mm {
+        return "low"
+    } else if q < 1.5 kJ/mm {
+        return "medium"
+    } else {
+        return "high"
+    }
+}
+print(classify(0.48 kJ/mm), classify(800 J/mm), classify(2 kJ/mm))
+
+# `else` may start the next line.
+let t = 1500 K
+if t > 1800 K {
+    print("molten")
+}
+else {
+    print("solid")
+}
+
+# while with a mutable variable.
+var x = 1
+var n = 0
+while x < 1000 {
+    x = x * 2
+    n = n + 1
+}
+print(x, n)
+
+# for over a half-open range [a, b), step 1.
+for i in 0..4 { print("i =", i) }
+for i in 3..3 { print("never") }
+for i in 0..2.5 { print("j =", i) }
+
+# Nested loops; each block has its own scope.
+var total = 0
+for a in 1..4 {
+    for b in 1..4 {
+        let p = a * b
+        total = total + p
+    }
+}
+print("sum of products:", total)
+{
+    let local = "inside"
+    print(local)
+}
+{
+    let local = "a different block, same name"
+    print(local)
+}
+
+# Short-circuit: the right side is not evaluated when the left decides.
+fn loud(v, label) {
+    print("evaluated", label)
+    return v
+}
+print(false and loud(true, "A"))
+print(true or loud(false, "B"))
+print(true and loud(true, "C"))

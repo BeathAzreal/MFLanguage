@@ -1,0 +1,1 @@
+tests/language/errors/rt_affine.mfl:1:24: runtime error: cannot multiply an absolute temperature in degC; convert it with .to(K) first, or use a difference (K or delta_degC)

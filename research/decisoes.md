@@ -286,3 +286,135 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
 - **Decisão:** manter a conversão para SI primeiro. Ver o diário de
   2026-11-06 (API).
 
+## ADR-026 — Funções: nível superior, içadas, valores de primeira classe, sem closures
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Alternativas:** funções aninhadas com closures, ou funções só nomeadas
+  (sem serem valores).
+- **Decisão:**
+  - `fn` só no nível superior;
+  - funções podem ser chamadas antes da declaração (são içadas, o que
+    permite recursão mútua);
+  - podem ser guardadas e passadas como valores;
+  - o corpo enxerga parâmetros, locais, globais e outras funções, mas nunca
+    as locais de outra chamada.
+- **Justificativa:** cobre os modelos de engenharia (funções puras de
+  grandezas) sem a complexidade de capturar variáveis. Closures ficam em
+  aberto.
+
+## ADR-027 — Retorno: anotado exige retorno em todo caminho; sem anotação, `nil`
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Decisão:**
+  - função com `-> T` que pode chegar ao fim sem `return` é erro de
+    compilação, e `return` sem valor também;
+  - função sem anotação devolve `nil` nesses casos;
+  - "todo caminho retorna" é uma análise sintática: `return`, bloco que
+    retorna, ou `if`/`else` em que os dois ramos retornam (laços não
+    contam).
+- **Justificativa:** quem declarou o tipo do resultado nunca recebe `nil`
+  por engano. A análise é simples de explicar.
+
+## ADR-028 — Limite de 1000 chamadas aninhadas, sem recursão em C
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Decisão:**
+  - a VM não usa a pilha de C para chamadas MFL;
+  - passar de 1000 chamadas aninhadas é erro em tempo de execução, apontado
+    na chamada;
+  - os quadros de chamada crescem sob demanda, dentro do limite de memória.
+- **Justificativa:** um programa hospedeiro (jogo) não pode ser derrubado
+  por recursão infinita em um modelo.
+
+## ADR-029 — Escopo léxico por bloco; locais podem sombrear globais
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Decisão:**
+  - blocos `{}` criam escopo;
+  - `let`/`var` no nível superior, fora de blocos, são globais;
+  - uma local pode ter o nome de uma global ou de uma função, mas não de
+    outra local visível da mesma função;
+  - parâmetros e variáveis de laço são imutáveis;
+  - ler uma global antes que sua declaração tenha rodado é erro em tempo de
+    execução.
+- **Justificativa:** permite parâmetros com nomes naturais (`speed`) mesmo
+  que exista uma global com esse nome, e evita sombreamentos confusos
+  dentro de uma mesma função.
+
+## ADR-030 — `for`: faixa semiaberta `a..b` com passo 1; arrays por índice atual
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Alternativas:** faixa inclusiva; passo configurável; limites com unidade.
+- **Decisão:**
+  - `for i in a..b` percorre `[a, b)`; os limites são números
+    adimensionais avaliados uma vez;
+  - `for x in array` percorre enquanto o índice é menor que o comprimento
+    *atual* do array.
+- **Justificativa:** igual a Rust e Python (`range`); evita erros de "um a
+  mais"; limites com unidade exigiriam definir o passo.
+
+## ADR-031 — Arrays homogêneos, índice a partir de 0, semântica de referência
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Decisão:**
+  - todos os elementos têm o mesmo tipo (e a mesma dimensão), mas cada um
+    mantém a sua unidade;
+  - o índice começa em 0 e deve ser um número inteiro adimensional;
+  - fora do intervalo é erro em tempo de execução, com posição;
+  - `let b = a` compartilha o mesmo array;
+  - `==` em arrays é erro;
+  - os arrays vivem até o fim da execução.
+- **Justificativa:** uma coleção de grandezas de mesma natureza (velocidades
+  em mm/s, m/s, m/min) é o caso comum em engenharia. O índice a partir de 0
+  combina com `0..len(a)`.
+- **Pendência:** coletor de lixo.
+
+## ADR-032 — Tipagem gradual: `Any` verificado em tempo de execução; valores carregam a dimensão
+
+- **Data:** 2026-11-07 · **Status:** Aceita (revisa ADR-020 e ADR-022)
+- **Decisão:**
+  - o que não pode ser provado na compilação recebe o tipo `Any`;
+  - todas as operações são verificadas pela VM, que por isso guarda a
+    dimensão em cada valor;
+  - anotações (`Number`, `Bool`, `String`, `Quantity[u]`, `Array[T]`)
+    geram verificações na fronteira quando o valor é `Any`;
+  - uma `var` sem anotação inicializada com `Any` mantém o tipo do primeiro
+    valor (ADR-017 em tempo de execução);
+  - na v0.2 passam a existir erros em tempo de execução, sempre com
+    posição.
+- **Justificativa:** é o que a especificação §4.1 previa ("sem anotações,
+  verificação em tempo de execução"). O custo de guardar a dimensão é
+  pequeno (7 bytes por número).
+
+## ADR-033 — Temperaturas: `degC` absoluta (afim), `K` e `delta_degC` para diferenças
+
+- **Data:** 2026-11-07 · **Status:** Aceita (resolve a questão aberta de
+  `docs/units.md` §5)
+- **Decisão:** segue a proposta da §5:
+  - `degC − degC` dá uma diferença;
+  - `degC ± diferença` continua absoluta;
+  - `degC + degC`, multiplicação, divisão, potência, resto e negação de
+    `degC` são erro;
+  - comparações e `.to()` aplicam o deslocamento de 273,15 K;
+  - `degC` não entra em unidades compostas nem aceita prefixo;
+  - pela API só passa K;
+  - `percent` (0,01) é a unidade de porcentagem, e `%` continua sendo resto;
+  - Fahrenheit fica reservado como "não suportado".
+- **Verificação:** conversão absoluta e conversão de diferença testadas
+  separadamente (`conformance_temperature`).
+
+## ADR-034 — Erros em tempo de execução com posição; a API devolve `MFL_ERR_RUNTIME` e o estado continua utilizável
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Decisão:**
+  - cada instrução guarda a linha e a coluna de origem;
+  - erros saem como `arquivo:linha:coluna: runtime error: texto`, e a CLI
+    sai com 1;
+  - na API, `MFL_ERR_RUNTIME` foi acrescentado no fim do `enum` (os valores
+    existentes não mudam), e os resultados anteriores e o estado
+    continuam válidos;
+  - `mfl_set_instruction_limit()` protege contra laços infinitos sem mudar
+    a `struct MflConfig`.
+- **Justificativa:** compatibilidade binária e de código-fonte com
+  hospedeiros da v0.1, e robustez para jogos.
+

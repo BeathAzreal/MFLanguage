@@ -24,5 +24,15 @@ empty.
 - `conformance_logic` — number formatting, IEEE edge cases, comparisons,
   short-circuit logic, strings and variables (spec §9).
 
-Other folders: `tokens/` (`--tokens`), `ast/` (`--ast`), `check/`
-(`--types`), `run/` (example programs and a `--bytecode` listing).
+- v0.2: `conformance_functions`, `conformance_control`,
+  `conformance_arrays`, `conformance_types` (annotations and gradual
+  typing), `conformance_temperature` (absolute vs. difference).
+
+Other folders:
+
+| Folder | Content |
+|--------|---------|
+| `tokens/`, `ast/`, `check/` | `--tokens`, `--ast`, `--types` golden outputs |
+| `run/` | example programs' output and a `--bytecode` listing |
+| `errors/` | v0.2 programs that must fail: `compile_v02.mfl` (22 compile-time errors) and one file per run-time error (`rt_*.mfl`), each with `.stdout` and `.stderr`; all registered automatically |
+| `acceptance/` | v0.2 acceptance cases: power passed as speed, return value incompatible with the signature, index out of range |

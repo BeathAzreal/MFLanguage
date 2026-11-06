@@ -237,9 +237,9 @@ static void test_chunk_shape(void)
     CHECK(mfl_check(&pr.program, 0, &cr));
     CHECK(mfl_compile(&pr.program, &cr, 0, &comp));
     CHECK(comp.chunk.global_count == 2);
-    CHECK(comp.chunk.max_stack == 2);
+    CHECK(comp.chunk.max_stack == 3); /* deepest stack (2) + one value of margin */
     CHECK(comp.chunk.code[comp.chunk.code_len - 1] == MFL_OP_HALT);
-    CHECK(comp.chunk.unit_len == 4); /* V, A, W (default), kW */
+    CHECK(comp.chunk.unit_len == 3); /* V, A, kW (results without a unit print in SI) */
     mfl_compile_free(&comp);
     mfl_check_free(&cr);
     mfl_parse_free(&pr);
@@ -266,7 +266,7 @@ static void test_out_of_memory(void)
     CHECK(saw_oom && saw_ok);
 
     saw_oom = saw_ok = 0;
-    for (limit = 1; limit < 400; limit++) {
+    for (limit = 1; limit < 8000; limit += 7) {
         int st = run_limits(src, 0, limit);
         if (st == MFL_VM_OK) {
             saw_ok = 1;
@@ -318,7 +318,17 @@ static void test_invalid_bytecode(void)
             comp.chunk.code_len = (size_t)((seed >> 40) % len);
         }
         sink.len = 0;
-        st = mfl_vm_run(&comp.chunk, buf_write, &sink, 0);
+        {
+            /* Damaged backward jumps can loop forever: bound the run. */
+            MflVmLimits lim;
+            MflVmError err;
+            lim.memory_limit = 1u << 20;
+            lim.max_steps = 100000;
+            st = mfl_vm_execute(&comp.chunk, NULL, 0, NULL, buf_write, &sink, &lim, &err);
+            if (st == MFL_VM_RUNTIME_ERROR || st == MFL_VM_OUT_OF_MEMORY) {
+                st = MFL_VM_INVALID_CODE; /* counted as rejected */
+            }
+        }
         comp.chunk.code_len = len;
         if (st == MFL_VM_OK) {
             ok_runs++;
