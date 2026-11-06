@@ -27,6 +27,7 @@ na IC ou no TCC.
 | 2026-11-06 | Compilador e VM (`src/compiler/chunk.*`, `compiler.*`, `src/vm/`, `src/runtime/number.*`, testes) | Implementou o código e os testes, verificou com testes diferenciais (Python), sanitizers e CI | Testou a versão anterior, autorizou o merge e solicitou a etapa | Testes automatizados e diferenciais; revisão do código pendente |
 | 2026-11-06 | API de embutir (`include/mfl/mfl.h`, `src/api/`, exemplo, testes, `docs/embedding.md`) | Projetou e implementou a API, o exemplo e os testes; propôs, mediu e reverteu um experimento de precisão | Pediu para continuar (o merge do PR #5 ficou pendente de aprovação explícita) | Testes automatizados; revisão do projeto da API pendente |
 | 2026-11-07 | MFL v0.2 completa (núcleo, testes por funcionalidade, demonstração de aceite, documentação) | Implementou, testou (incluindo fuzz e sanitizers), resolveu as decisões em aberto e documentou | Definiu o escopo e os critérios de aceite da v0.2 | Testes automatizados e de aceite; revisão das decisões de linguagem (ADR-026 a 034) pendente |
+| 2026-11-06 | MFL v0.3 (import, módulo numerical, solver térmico 1D, exportação, API C, pacotes no CI) | Projetou e implementou, verificou contra a solução analítica e com sanitizers, documentou (ADR-035 a 040) | Definiu o escopo, os critérios de aceite e o limite do marco (só condução 1D) | Testes automatizados, CI em quatro plataformas; revisão do modelo físico e dos valores de material pendente |
 
 ## Boas práticas adotadas
 

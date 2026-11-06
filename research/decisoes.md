@@ -418,3 +418,74 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
 - **Justificativa:** compatibilidade binária e de código-fonte com
   hospedeiros da v0.1, e robustez para jogos.
 
+
+## ADR-035 — `import "arquivo.mfl"` e `import modulo`: carregamento único, visibilidade transitiva, espaço de nomes único
+
+- **Data:** 2026-11-06 · **Status:** Aceita (resolve a questão aberta da
+  especificação §12)
+- **Decisão:** `import` só no topo do arquivo. Caminhos relativos ao
+  arquivo que importa, com `/`, terminando em `.mfl`; normalização léxica
+  identifica o arquivo; cada arquivo é carregado uma vez e executado antes
+  de quem o importa; ciclos e arquivos ausentes são erro na linha do
+  `import`. Um arquivo vê os nomes dos que importa (direta ou
+  transitivamente), nunca os de quem o importa; todos os nomes de topo
+  compartilham um espaço de nomes; um `var` só é alterado no próprio
+  arquivo. Módulos em C (`math`, `numerical`, `heat`) são usados sempre
+  qualificados e só no arquivo que os importa. Na API, importar arquivos é
+  desligado por padrão (`mfl_set_file_imports`).
+- **Alternativas:** `import "x" as y` com acesso qualificado (exige
+  espaços de nomes por arquivo no verificador; adiado); nomes privados.
+
+## ADR-036 — Código numérico em `modules/numerical/` (biblioteca própria), ligação em `src/modules/`
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** a numérica é C11 puro em `double` SI, sem tipos do
+  interpretador, compilada como `mfl_numerical` e testada sozinha. A
+  ligação usa uma tabela constante de descritores (tipos de parâmetro,
+  dimensões, resultado) que o verificador usa antes de rodar e que é
+  conferida de novo nos valores em tempo de execução. A VM só conhece o
+  opcode `CALL_NATIVE`. Sem estado global: o estado do módulo `heat` fica
+  numa sessão que pertence a quem executa a VM.
+
+## ADR-037 — FTCS com Fo ≤ 1/2 (igualdade aceita, tolerância relativa 1e-12)
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** diferenças finitas explícitas; extremidade isolada por nó
+  espelho; temperatura prescrita substitui o valor inicial em t = 0; o
+  limite `Δt ≤ Δx²/(2α)` é verificado antes de qualquer passo, com
+  tolerância relativa de 1e-12 para absorver arredondamentos de conversão;
+  a mensagem traz o passo pedido e o máximo. Tempo final entre passos: um
+  último passo mais curto termina exatamente nele (restos abaixo de 1e-9·Δt
+  são arredondamento). Amostras: estado inicial, a cada n passos e sempre o
+  estado final.
+- **Verificação:** solução analítica em três malhas (ordem 2,00),
+  conservação da energia discreta, igualdade no limite.
+
+## ADR-038 — Exportação atômica; o arquivo de metadados é o marcador de conclusão
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** CSV `time_s,position_m,temperature_K` ordenado por tempo e
+  posição, números com `.` e ida e volta exata. A exportação remove o JSON
+  antigo, escreve `.partial`, renomeia o CSV e por último o JSON. Exportação
+  completa ⇔ o JSON existe (com linhas, bytes e hash FNV-1a do CSV). Falha:
+  código de saída 4 na CLI, `MFL_ERR_IO` na API, nenhum JSON.
+- **Verificação:** falha injetada em cada byte, em `close` e em `rename`.
+
+## ADR-039 — API C da simulação: objeto do hospedeiro e resultado do estado
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** `MflHeat1D` criado por `mfl_heat1d_new` pertence ao
+  hospedeiro (liberar antes do estado); `mfl_state_heat1d` devolve a
+  simulação do último script, que pertence ao estado e vale até a próxima
+  execução. Unidades em texto como em `mfl_set_number`; temperaturas
+  absolutas aceitam K e degC e rejeitam `delta_degC`. `MFL_ERR_SIMULATION`
+  e `MFL_ERR_IO` foram acrescentados no fim do `enum`. Uma execução que
+  falha preserva os resultados anteriores.
+
+## ADR-040 — Reprodutibilidade bit a bit: `-ffp-contract=off`
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Decisão:** o núcleo e a biblioteca numérica são compilados sem
+  contração em FMA (GCC/Clang); o MSVC não contrai por padrão. Assim o
+  solver dá os mesmos bits em x86-64 e ARM64, e a comparação CLI ↔ C pode
+  usar tolerância de 1e-9 K com diferença medida de 0 K.
