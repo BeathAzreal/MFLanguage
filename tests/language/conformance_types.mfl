@@ -1,0 +1,38 @@
+# Conformance (v0.2): optional type annotations and gradual typing.
+
+# Annotated declarations. Quantity[u] fixes the dimension, not the unit.
+let v: Quantity[mm/s] = 0.3 m/min
+let n: Number = 3
+let ok: Bool = v > 4 mm/s
+let label: String = "MAG"
+let qs: Array[Quantity[J/mm]] = [480 J/mm, 0.24 kJ/mm]
+print(v, n, ok, label, qs)
+
+# A var keeps its declared type; any unit of that dimension is fine.
+var temperature: Quantity[K] = 300 K
+temperature = 0.35 kK
+print(temperature)
+
+# Annotated parameters and return value, called with compatible units.
+fn power(voltage: Quantity[V], current: Quantity[A]) -> Quantity[W] {
+    return voltage * current
+}
+print(power(20 V, 150 A).to(kW), power(0.02 kV, 150000 mA).to(W))
+
+# Unannotated code: types are checked when it runs.
+fn scale(x, k) { return x * k }
+print(scale(2, 3), scale(2 mm, 3), scale(2 mm, 3 mm).to(mm^2))
+
+# An unannotated result can flow into an annotated context: checked at run time.
+fn identity(x) { return x }
+let speed: Quantity[m/s] = identity(5 mm/s)
+print(speed.to(mm/s))
+fn heat(U: Quantity[V], I: Quantity[A], v: Quantity[mm/s]) -> Quantity[J/mm] {
+    return 0.8 * U * I / v
+}
+print(heat(identity(20 V), 150 A, identity(5 mm/s)).to(J/mm))
+
+# A var initialised from an unannotated call keeps the type of its first value.
+var acc = identity(0 J)
+acc = acc + 2 kJ
+print(acc.to(J))
