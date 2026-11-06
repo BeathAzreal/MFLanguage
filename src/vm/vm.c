@@ -684,6 +684,19 @@ MflVmStatus mfl_vm_execute(const MflChunk *c, const MflValue *init, size_t init_
             vm.sp--;
             break;
         }
+        case MFL_OP_RANGE_STEP: {
+            double next;
+            NEED(1);
+            if (TOP.kind != MFL_VAL_NUMBER) {
+                goto done;
+            }
+            next = TOP.as.number + 1.0;
+            if (!(next > TOP.as.number)) {
+                FAIL("numeric for loop cannot advance its counter by 1");
+            }
+            TOP.as.number = next;
+            break;
+        }
         case MFL_OP_NEG:
             NEED(1);
             if (TOP.kind != MFL_VAL_NUMBER) {
