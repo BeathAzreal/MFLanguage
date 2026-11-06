@@ -1,0 +1,6 @@
+# Lexical errors are reported with their position and lexing continues.
+let a = 5 @ 2
+let ok = !done
+let s = "bad \q escape"
+let t = "never closed
+let after = 1
