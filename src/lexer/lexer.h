@@ -13,6 +13,12 @@
  *     NEWLINE, after ';' or '{', inside '(' ... ')' or '[' ... ']', or
  *     after a token that cannot end an expression (binary operators,
  *     '=', ',', '.', '..', '->', ':', 'and', 'or', 'not').
+ *   - Exception: a line that starts with a keyword that can only begin a
+ *     statement (let var fn if while for return import) always ends the
+ *     previous statement, even inside an open '(' / '[' (the group is
+ *     reset as unclosed) or after a trailing operator. The parser then
+ *     reports the error at the broken line instead of swallowing the
+ *     following lines.
  *
  * Errors do not stop the lexer: an MFL_TOK_ERROR token is returned with
  * a message, and scanning resumes after the offending text, so several
