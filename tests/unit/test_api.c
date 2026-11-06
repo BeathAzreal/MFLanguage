@@ -351,6 +351,86 @@ static void test_memory_limits(void)
     CHECK(saw_oom && saw_ok);
 }
 
+/* v0.2: run-time errors reach the host, which can keep using MFL. */
+static void test_runtime_errors(void)
+{
+    Capture cap;
+    MflState *S = new_capturing(&cap, 0);
+    double q = 0.0;
+    MflScript *model;
+    const char *src = "fn heat(U: Quantity[V], I: Quantity[A], v: Quantity[mm/s]) -> Quantity[J/mm] {\n"
+                      "    return 0.8 * U * I / v\n"
+                      "}\n"
+                      "let speeds = [5 mm/s, 10 mm/s]\n"
+                      "let q = heat(voltage, 150 A, speeds[pick])\n";
+
+    /* Index chosen by the host: valid, then out of range, then valid again. */
+    mfl_set_number(S, "voltage", 20, "V");
+    mfl_set_number(S, "pick", 0, NULL);
+    model = mfl_script_compile(S, src, strlen(src), "model.mfl");
+    CHECK(model != NULL);
+    CHECK_STATUS(mfl_script_run(S, model), MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "q", "J/mm", &q), MFL_OK);
+    CHECK(q == 480.0);
+    mfl_set_number(S, "pick", 2, NULL);
+    CHECK_STATUS(mfl_script_run(S, model), MFL_ERR_RUNTIME);
+    CHECK(strcmp(mfl_error_message(S),
+                 "model.mfl:5:30: runtime error: index 2 is out of range for an array of length 2 "
+                 "(valid indices: 0 to 1)\n") == 0);
+    CHECK_STATUS(mfl_get_number(S, "q", "J/mm", &q), MFL_OK); /* previous results kept */
+    CHECK(q == 480.0);
+    mfl_set_number(S, "pick", 1, NULL);
+    CHECK_STATUS(mfl_script_run(S, model), MFL_OK); /* the state is still usable */
+    CHECK_STATUS(mfl_get_number(S, "q", "J/mm", &q), MFL_OK);
+    CHECK(q == 240.0);
+    mfl_script_free(model);
+
+    /* Gradual typing: a dimension error only visible at run time. */
+    CHECK_STATUS(eval(S, "fn add(a, b) { return a + b }\nlet r = add(1 m, 2 s)"), MFL_ERR_RUNTIME);
+    CHECK(strstr(mfl_error_message(S), "t.mfl:1:25: runtime error: cannot add Quantity[m] and Quantity[s]") != NULL);
+    /* Endless recursion. */
+    CHECK_STATUS(eval(S, "fn f(n) { return f(n) }\nlet r = f(1)"), MFL_ERR_RUNTIME);
+    CHECK(strstr(mfl_error_message(S), "call depth limit of 1000 exceeded") != NULL);
+    /* An endless loop is stopped by the instruction limit... */
+    mfl_set_instruction_limit(S, 100000);
+    CHECK_STATUS(eval(S, "var i = 0\nwhile true { i = i + 1 }"), MFL_ERR_RUNTIME);
+    CHECK(strstr(mfl_error_message(S), "instruction limit of 100000 exceeded") != NULL);
+    /* ...which does not affect normal programs. */
+    cap.len = 0;
+    cap.text[0] = '\0';
+    CHECK_STATUS(eval(S, "var s = 0\nfor i in 0..100 { s = s + i }\nprint(s)"), MFL_OK);
+    CHECK(strcmp(cap.text, "4950\n") == 0);
+    mfl_set_instruction_limit(S, 0);
+    /* Output printed before a run-time error reaches the host. */
+    cap.len = 0;
+    cap.text[0] = '\0';
+    CHECK_STATUS(eval(S, "print(\"before\")\nlet a = [1]\nprint(a[5])"), MFL_ERR_RUNTIME);
+    CHECK(strcmp(cap.text, "before\n") == 0);
+    CHECK(strcmp(mfl_status_name(MFL_ERR_RUNTIME), "MFL_ERR_RUNTIME") == 0);
+    mfl_state_free(S);
+}
+
+/* v0.2 features through the API: functions, loops, arrays, temperatures. */
+static void test_v02_programs(void)
+{
+    MflState *S = mfl_state_new(NULL);
+    double v = 0.0;
+    const char *src = "fn mean(xs: Array[Quantity[m/s]]) -> Quantity[m/s] {\n"
+                      "    var s = xs[0]\n"
+                      "    for k in 1..len(xs) { s = s + xs[k] }\n"
+                      "    return s / len(xs)\n"
+                      "}\n"
+                      "let avg = mean([speed, 2 * speed, 3 * speed])\n"
+                      "let preheat = (150 degC).to(K)\n";
+    mfl_set_number(S, "speed", 5, "mm/s");
+    CHECK_STATUS(mfl_eval(S, src, strlen(src), "v02.mfl"), MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "avg", "mm/s", &v), MFL_OK);
+    CHECK(close_to(v, 10.0));
+    CHECK_STATUS(mfl_get_number(S, "preheat", "K", &v), MFL_OK);
+    CHECK(close_to(v, 423.15));
+    mfl_state_free(S);
+}
+
 static void test_status_names(void)
 {
     CHECK(strcmp(mfl_status_name(MFL_OK), "MFL_OK") == 0);
@@ -370,6 +450,8 @@ int main(void)
     test_compile_once_run_many();
     test_independent_states();
     test_memory_limits();
+    test_runtime_errors();
+    test_v02_programs();
     test_status_names();
     printf("test_api: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
