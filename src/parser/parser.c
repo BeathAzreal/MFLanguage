@@ -742,6 +742,27 @@ int mfl_parse(const char *src, size_t length, size_t memory_limit, MflParseResul
     return !out->out_of_memory && out->diagnostic_count == 0;
 }
 
+int mfl_parse_unit(const char *src, size_t length, MflParseResult *out, MflExpr **unit)
+{
+    Parser p;
+    MflExpr *u;
+
+    memset(out, 0, sizeof *out);
+    mfl_arena_init(&out->arena, 0);
+    memset(&p, 0, sizeof p);
+    p.res = out;
+    p.oom_expr.kind = MFL_EXPR_ERROR;
+    mfl_lexer_init(&p.lx, src, length);
+    advance(&p);
+    u = parse_unit(&p);
+    match(&p, MFL_TOK_NEWLINE);
+    if (!p.panic && !check(&p, MFL_TOK_EOF)) {
+        error_expected(&p, "end of unit");
+    }
+    *unit = u;
+    return !out->out_of_memory && out->diagnostic_count == 0 && u != &p.oom_expr;
+}
+
 void mfl_parse_free(MflParseResult *result)
 {
     mfl_arena_free(&result->arena);

@@ -1,0 +1,16 @@
+MFL 0.0.1-dev embedding example
+
+setting                 U [V]  I [A]  v [mm/s]     P [kW]    Q [kJ/mm]
+MIG/MAG, thin sheet      18.0  120.0       8.0      1.728        0.216
+MIG/MAG, conformance     20.0  150.0       5.0      2.400        0.480
+MIG/MAG, thick plate     28.0  280.0       4.0      6.272        1.568
+
+last setting: Q = 1568 J/mm
+last setting: v = 240 mm/min
+
+error handling:
+  MFL_ERR_UNIT: cannot express 'energy' (dimension kg*m/s^2) in 'm/s' (dimension m/s)
+  MFL_ERR_UNIT: invalid unit 'furlong/s': unknown unit 'furlong'
+  MFL_ERR_PROGRAM: bad_model.mfl:1:17: error: cannot add Quantity[kg*m^2/(s^3*A)] and Quantity[A]: dimensions differ
+
+model printed (captured by the host): Q = 1568.0000000000002 J/mm

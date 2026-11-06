@@ -12,9 +12,9 @@ hypotheses and run reproducible simulations — for undergraduate research
 
 > ⚠️ **Early stage (pre-alpha).** The v0.1 core runs a small subset of the
 > language: `let`/`var`, arithmetic with physical units, static dimensional
-> analysis, unit conversion and `print`. Functions, control flow, arrays,
-> the C embedding API and the scientific modules are **planned, not
-> implemented**. See [Current status](#current-status).
+> analysis, unit conversion and `print`, and can be embedded in C/C++
+> programs. Functions, control flow, arrays and the scientific modules are
+> **planned, not implemented**. See [Current status](#current-status).
 
 ---
 
@@ -66,7 +66,7 @@ runs and prints `480 J/mm` (`./build/mfl examples/welding/heat_input.mfl`).*
 | Physical units and dimensional analysis (SI base + derived) | **Implemented** (v0.1): checked before running (`mfl --types`), exact unit conversion when running |
 | Gradual typing (dynamic by default, optional annotations) | Planned (v0.2+) |
 | Scientific modules (`math`, `units`, `numerical`, `welding`) independent of the core | Planned |
-| Embeddable C API for programs and games | Planned |
+| Embeddable C API for programs and games | **Implemented** (v0.1 subset) — [`docs/embedding.md`](docs/embedding.md) |
 | WebAssembly target | Future |
 | Bindings to C/C++/Fortran scientific libraries | Future |
 
@@ -95,8 +95,19 @@ graphics engine. The core is plain **C11** with only the C standard library.
 ```
 
 The host-facing **C API** (`include/mfl/mfl.h`) lets other programs and
-games create an interpreter, set parameters, run a model and read results.
-Details: [`docs/architecture.md`](docs/architecture.md).
+games create an interpreter, set parameters with units, run a model and
+read results in any compatible unit. Details:
+[`docs/architecture.md`](docs/architecture.md) and
+[`docs/embedding.md`](docs/embedding.md).
+
+```c
+MflState *S = mfl_state_new(NULL);
+mfl_set_number(S, "voltage", 20, "V");
+mfl_set_number(S, "current", 150, "A");
+mfl_set_number(S, "speed", 5, "mm/s");
+mfl_eval(S, model, strlen(model), "heat_input.mfl");
+mfl_get_number(S, "energy", "kJ/mm", &q);    /* q = 0.48 */
+```
 
 ## First validation case: welding
 
@@ -127,13 +138,14 @@ MFLanguage/
 │   ├── parser/          Parser + AST (implemented, v0.1 subset)
 │   ├── compiler/        Semantic checker, bytecode compiler (implemented)
 │   ├── vm/              Bytecode virtual machine (implemented)
+│   ├── api/             Public embedding API implementation
 │   ├── runtime/         Arena, unit registry and dimensions; values, stdlib glue (planned)
 │   ├── main.c           `mfl` command-line driver
 │   └── version.c
 ├── include/mfl/         Public C API headers
 ├── modules/             Scientific modules, independent of the core
 │   ├── math/  units/  numerical/  welding/
-├── examples/            basic/  thermal/  welding/
+├── examples/            basic/  thermal/  welding/  embedding/
 ├── tests/               language/  units/  numerical/
 ├── benchmarks/
 ├── CMakeLists.txt
@@ -201,7 +213,8 @@ materials, welding, manufacturing and numerical methods.
 - ✅ Parser + AST for the v0.1 subset (`let`, `var`, assignment, expressions, quantity literals), with error recovery
 - ✅ Semantic checker: names, unit registry, static dimensional analysis (`mfl --types`)
 - ✅ Bytecode compiler and VM: programs run; conformance test `480 J/mm` passes
-- ⏳ Functions, control flow, arrays (v0.2); C embedding API; numerical module
+- ✅ C embedding API (`include/mfl/mfl.h`, `docs/embedding.md`), usable from C and C++
+- ⏳ Functions, control flow, arrays (v0.2); numerical module
 - ⏳ Units and dimensional analysis — **design only**
 - ⏳ Numerical and welding modules — **design only**
 - ✅ The example programs in `examples/` run (v0.1 subset)

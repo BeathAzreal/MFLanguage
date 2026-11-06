@@ -7,6 +7,10 @@
  * coherent SI first and the result has no unit (the compiler then adds
  * the SI display unit with DEFAULT_UNIT).
  *
+ * (Tried and rejected: multiplying magnitudes first and combining exact
+ * unit scales. It made a few "round" cases exact but was correctly
+ * rounded less often on 4500 random products: 59% vs 64%.)
+ *
  * SPDX-License-Identifier: MIT
  */
 #include "vm/vm.h"
@@ -94,6 +98,13 @@ static MflValue boolean(int b)
 
 MflVmStatus mfl_vm_run(const MflChunk *c, MflWriteFn write, void *ctx, size_t memory_limit)
 {
+    return mfl_vm_run_globals(c, NULL, 0, NULL, write, ctx, memory_limit);
+}
+
+MflVmStatus mfl_vm_run_globals(const MflChunk *c, const MflValue *init, size_t init_count,
+                               MflValue *snapshot, MflWriteFn write, void *ctx,
+                               size_t memory_limit)
+{
     size_t stack_cap = c->max_stack + 1;
     size_t bytes = (stack_cap + c->global_count) * sizeof(MflValue);
     MflValue *stack;
@@ -115,6 +126,18 @@ MflVmStatus mfl_vm_run(const MflChunk *c, MflWriteFn write, void *ctx, size_t me
         globals[i].kind = MFL_VAL_NIL;
         globals[i].unit = MFL_NO_UNIT;
         globals[i].as.number = 0.0;
+    }
+    if (init_count > c->global_count) {
+        free(stack);
+        return MFL_VM_INVALID_CODE;
+    }
+    for (i = 0; i < init_count; i++) {
+        if (init[i].kind == MFL_VAL_NUMBER && init[i].unit != MFL_NO_UNIT &&
+            (init[i].unit < 0 || (size_t)init[i].unit >= c->unit_len)) {
+            free(stack);
+            return MFL_VM_INVALID_CODE;
+        }
+        globals[i] = init[i];
     }
 
 #define NEED(n)               \
@@ -334,6 +357,9 @@ MflVmStatus mfl_vm_run(const MflChunk *c, MflWriteFn write, void *ctx, size_t me
 
         case MFL_OP_HALT:
             status = MFL_VM_OK;
+            if (snapshot != NULL) {
+                memcpy(snapshot, globals, c->global_count * sizeof *globals);
+            }
             goto done;
 
         default:

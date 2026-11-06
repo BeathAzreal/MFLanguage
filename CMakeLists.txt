@@ -15,6 +15,7 @@ endif()
 
 option(MFL_BUILD_TESTS "Build MFL tests" ON)
 option(MFL_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+option(MFL_BUILD_EXAMPLES "Build the C embedding example" ON)
 
 # ---------------------------------------------------------------------------
 # Core library. Sources from src/lexer, src/parser, src/compiler, src/vm and
@@ -32,6 +33,7 @@ add_library(mfl_core
     src/compiler/chunk.c
     src/compiler/compiler.c
     src/vm/vm.c
+    src/api/mfl_api.c
 )
 # include/ holds the public C API; src/ holds internal headers
 # (e.g. lexer/lexer.h) used by the core, the CLI and the unit tests.
@@ -77,6 +79,15 @@ target_include_directories(mfl PRIVATE ${PROJECT_SOURCE_DIR}/src)
 mfl_set_warnings(mfl)
 
 # ---------------------------------------------------------------------------
+# Embedding example (uses only the public header include/mfl/mfl.h)
+# ---------------------------------------------------------------------------
+if(MFL_BUILD_EXAMPLES)
+    add_executable(mfl_embed_example examples/embedding/heat_input_host.c)
+    target_link_libraries(mfl_embed_example PRIVATE mfl_core)
+    mfl_set_warnings(mfl_embed_example)
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests (smoke tests only; language conformance tests are registered as
 # soon as the interpreter can execute scripts).
 # ---------------------------------------------------------------------------
@@ -116,6 +127,25 @@ if(MFL_BUILD_TESTS)
     add_test(NAME checker_unit COMMAND test_checker)
 
     # Number parsing/formatting and compiler + VM unit tests.
+    # API test: public header only (no src/ include directory).
+    add_executable(test_api tests/unit/test_api.c)
+    target_link_libraries(test_api PRIVATE mfl_core)
+    mfl_set_warnings(test_api)
+    add_test(NAME api_unit COMMAND test_api)
+
+    # The public header must also compile as C++ (game engines are C++).
+    include(CheckLanguage)
+    check_language(CXX)
+    if(CMAKE_CXX_COMPILER)
+        enable_language(CXX)
+        add_executable(test_api_cpp tests/unit/test_api_cpp.cpp)
+        set_target_properties(test_api_cpp PROPERTIES CXX_STANDARD 11 CXX_STANDARD_REQUIRED ON)
+        target_link_libraries(test_api_cpp PRIVATE mfl_core)
+        add_test(NAME api_cpp COMMAND test_api_cpp)
+    else()
+        message(STATUS "MFL: no C++ compiler found; skipping the C++ header test")
+    endif()
+
     foreach(t number vm)
         add_executable(test_${t} tests/unit/test_${t}.c)
         target_link_libraries(test_${t} PRIVATE mfl_core)
@@ -205,4 +235,13 @@ if(MFL_BUILD_TESTS)
     mfl_add_run_test(run_hello examples/basic/hello.mfl tests/language/run/hello.expected)
     mfl_add_run_test(bytecode_heat_input "--bytecode;examples/welding/heat_input.mfl"
         tests/language/run/heat_input.bytecode)
+
+    if(MFL_BUILD_EXAMPLES)
+        add_test(NAME run_embed_example
+            COMMAND ${CMAKE_COMMAND}
+                -DPROGRAM=$<TARGET_FILE:mfl_embed_example>
+                -DEXPECTED=${PROJECT_SOURCE_DIR}/tests/language/run/embed_example.expected
+                -DEXPECTED_STDERR=${PROJECT_SOURCE_DIR}/tests/cmake/empty.txt
+                -P ${PROJECT_SOURCE_DIR}/tests/cmake/compare_output.cmake)
+    endif()
 endif()

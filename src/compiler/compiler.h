@@ -31,4 +31,8 @@ int mfl_compile(const MflProgram *program, const MflCheckResult *checked, size_t
 
 void mfl_compile_free(MflCompileResult *result);
 
+/* Normalised text of a checked unit expression ("J/mm", "W/(m*K)").
+ * Returns 0 if it does not fit in size bytes. */
+int mfl_unit_text(const MflExpr *unit, char *buf, size_t size);
+
 #endif /* MFL_COMPILER_H */

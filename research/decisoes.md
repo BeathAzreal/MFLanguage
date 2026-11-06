@@ -256,3 +256,33 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
   com ida e volta; execução sob pt_BR com vírgula decimal; 50000
   expressões comparadas com o `repr` de Python (algoritmo de Gay).
 
+## ADR-024 — API de embutir: entradas com unidade, scripts compilados uma vez
+
+- **Data:** 2026-11-06 · **Status:** Aceita
+- **Contexto:** jogos precisam executar o mesmo modelo muitas vezes, com
+  valores escolhidos pelo jogador, e mostrar resultados na sua própria
+  interface.
+- **Decisão:**
+  - entradas com unidade (`mfl_set_number`) entram no script como
+    variáveis imutáveis com dimensão conhecida, e por isso a análise
+    dimensional vale também para elas;
+  - um `MflScript` é compilado uma vez e executado muitas vezes;
+  - resultados são lidos em qualquer unidade compatível (`mfl_get_number`);
+  - não há estado global, nem `exit()`;
+  - a saída de `print` vai para uma função do hospedeiro.
+- **Diferenças do rascunho:** `mfl_eval_file` foi retirado e o alocador do
+  hospedeiro ficou para depois (por ora há só um limite de memória).
+- **Consequência:** se uma entrada muda de dimensão, o script precisa ser
+  recompilado (`MFL_ERR_INPUTS_CHANGED`).
+
+## ADR-025 — Multiplicação e divisão continuam convertendo para SI primeiro
+
+- **Data:** 2026-11-06 · **Status:** Aceita (experimento alternativo
+  rejeitado)
+- **Alternativa testada:** multiplicar magnitudes e combinar fatores de
+  unidade exatos, convertendo uma vez no final.
+- **Resultado:** com 4500 casos aleatórios contra aritmética exata, o
+  arredondamento correto caiu de 64,5% para 59,1%, com valores típicos.
+- **Decisão:** manter a conversão para SI primeiro. Ver o diário de
+  2026-11-06 (API).
+
