@@ -44,6 +44,7 @@ português, prontos para virar texto de relatório, monografia ou artigo.
 | 2026-11-06 | [Verificação semântica](diario/2026-11-06_verificacao-semantica.md) | Registro de unidades, análise dimensional estática, `mfl --types` |
 | 2026-11-06 | [Compilador e VM](diario/2026-11-06_compilador-vm.md) | Bytecode, máquina virtual, números independentes de *locale*, **`480 J/mm`**, testes diferenciais |
 | 2026-11-06 | [API de embutir](diario/2026-11-06_api-embutir.md) | API C para jogos, exemplo de hospedeiro, experimento de precisão refutado |
+| 2026-11-07 | [MFL v0.2](diario/2026-11-07_v0.2.md) | Funções, controle de fluxo, arrays, tipagem gradual, temperaturas, erros em tempo de execução, demonstração de aceite |
 
 ## Possíveis enquadramentos acadêmicos
 
