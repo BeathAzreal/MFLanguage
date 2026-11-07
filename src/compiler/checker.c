@@ -1275,6 +1275,12 @@ static int check_native_arg(Checker *c, const MflNative *n, int i, MflExpr *a, c
             return 0;
         }
         return 1;
+    case MFL_NP_STRING:
+        if (t.kind != MFL_TYPE_STRING) {
+            native_arg_error(c, a, n, i, "a String");
+            return 0;
+        }
+        return 1;
     case MFL_NP_TEMPERATURE:
         if (!is_temperature(t)) {
             native_arg_error(c, a, n, i, "an absolute temperature (K or degC)");

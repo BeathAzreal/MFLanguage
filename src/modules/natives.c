@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "modules/heat_natives.h"
+#include "modules/welding_natives.h"
 #include "runtime/number.h"
 #include "runtime/units.h"
 #include "vector.h"
@@ -44,6 +45,13 @@ int mfl_native_fail(MflNativeEnv *env, const char *fmt, ...)
         va_end(ap);
     }
     return 1;
+}
+
+void mfl_native_string(const MflValue *v, char *buf, size_t size)
+{
+    size_t n = v->as.string.length < size - 1 ? v->as.string.length : size - 1;
+    memcpy(buf, v->as.string.chars, n);
+    buf[n] = '\0';
 }
 
 double mfl_native_si(const MflNativeEnv *env, const MflValue *v)
@@ -300,6 +308,19 @@ static int num_mean(MflNativeEnv *env, const MflValue *a, MflValue *r)
 #define CONDUCTIVITY DIM(1, 1, -3, 0, -1)  /* W/(m*K) = kg*m/(s^3*K) */
 #define DENSITY DIM(-3, 1, 0, 0, 0)        /* kg/m^3 */
 #define SPECIFIC_HEAT DIM(2, 0, -2, 0, -1) /* J/(kg*K) = m^2/(s^2*K) */
+#define VOLT DIM(2, 1, -3, -1, 0)          /* V = kg*m^2/(s^3*A) */
+#define AMPERE DIM(0, 0, 0, 1, 0)
+#define WATT DIM(2, 1, -3, 0, 0)
+#define SPEED_ DIM(1, 0, -1, 0, 0)
+#define PER_LENGTH_J DIM(1, 1, -2, 0, 0)   /* J/m = N */
+#define PW PD("power", MFL_NP_DIM, WATT, "W")
+#define PV PD("speed", MFL_NP_DIM, SPEED_, "m/s")
+#define PK PD("conductivity", MFL_NP_DIM, CONDUCTIVITY, "W/(m*K)")
+#define PRHO PD("density", MFL_NP_DIM, DENSITY, "kg/m^3")
+#define PCP PD("specific_heat", MFL_NP_DIM, SPECIFIC_HEAT, "J/(kg*K)")
+#define PT0 P("preheat", MFL_NP_TEMPERATURE)
+#define PD_(n) PD((n), MFL_NP_DIM, LENGTH, "m")
+#define PQ PD("heat_input", MFL_NP_DIM, PER_LENGTH_J, "J/m")
 
 static const MflNative natives[] = {
     /* math */
@@ -357,6 +378,39 @@ static const MflNative natives[] = {
     {"heat", "first_time_reaching", 2,
      {PD("position", MFL_NP_DIM, LENGTH, "m"), P("temperature", MFL_NP_TEMPERATURE)}, MFL_NR_ANY,
      NODIM, 0, 0.0, mfl_heat_first_time_reaching},
+
+    /* welding (welding_natives.c; docs/welding.md) */
+    {"welding", "efficiency", 1, {P("process", MFL_NP_STRING)}, MFL_NR_NUMBER, NODIM, 0, 0.0,
+     mfl_welding_efficiency},
+    {"welding", "heat_input", 4,
+     {PD("voltage", MFL_NP_DIM, VOLT, "V"), PD("current", MFL_NP_DIM, AMPERE, "A"), PV,
+      P("efficiency", MFL_NP_NUMBER)},
+     MFL_NR_DIM, PER_LENGTH_J, 0, 0.0, mfl_welding_heat_input},
+    {"welding", "t85_thick", 3, {PQ, PK, PT0}, MFL_NR_DIM, TIME, 0, 0.0, mfl_welding_t85_thick},
+    {"welding", "t85_thin", 6, {PQ, PD_("thickness"), PK, PRHO, PCP, PT0}, MFL_NR_DIM, TIME, 0, 0.0,
+     mfl_welding_t85_thin},
+    {"welding", "t85_en1011", 3, {PQ, PD_("thickness"), PT0}, MFL_NR_DIM, TIME, 0, 0.0,
+     mfl_welding_t85_en1011},
+    {"welding", "t85_en1011_joint", 5,
+     {PQ, PD_("thickness"), PT0, P("f2", MFL_NP_NUMBER), P("f3", MFL_NP_NUMBER)}, MFL_NR_DIM, TIME,
+     0, 0.0, mfl_welding_t85_en1011_joint},
+    {"welding", "en1011_transition", 2, {PQ, PT0}, MFL_NR_DIM, LENGTH, 0, 0.0,
+     mfl_welding_en1011_transition},
+    {"welding", "temperature_thick", 9, {PW, PV, PK, PRHO, PCP, PT0, PD_("x"), PD_("y"), PD_("z")},
+     MFL_NR_DIM, KELVIN, 0, 0.0, mfl_welding_temperature_thick},
+    {"welding", "temperature_thin", 9,
+     {PW, PV, PD_("thickness"), PK, PRHO, PCP, PT0, PD_("x"), PD_("y")}, MFL_NR_DIM, KELVIN, 0, 0.0,
+     mfl_welding_temperature_thin},
+    {"welding", "peak_thick", 7, {PW, PV, PK, PRHO, PCP, PT0, PD_("distance")}, MFL_NR_DIM, KELVIN,
+     0, 0.0, mfl_welding_peak_thick},
+    {"welding", "peak_thin", 8, {PW, PV, PD_("thickness"), PK, PRHO, PCP, PT0, PD_("distance")},
+     MFL_NR_DIM, KELVIN, 0, 0.0, mfl_welding_peak_thin},
+    {"welding", "distance_for_peak_thick", 7,
+     {PW, PV, PK, PRHO, PCP, PT0, P("temperature", MFL_NP_TEMPERATURE)}, MFL_NR_DIM, LENGTH, 0, 0.0,
+     mfl_welding_distance_for_peak_thick},
+    {"welding", "distance_for_peak_thin", 8,
+     {PW, PV, PD_("thickness"), PK, PRHO, PCP, PT0, P("temperature", MFL_NP_TEMPERATURE)},
+     MFL_NR_DIM, LENGTH, 0, 0.0, mfl_welding_distance_for_peak_thin},
 };
 
 #define NATIVE_COUNT ((int)(sizeof natives / sizeof natives[0]))
@@ -395,7 +449,7 @@ int mfl_native_module_exists(MflText name)
     return 0;
 }
 
-const char *mfl_native_module_list(void) { return "math, numerical, heat"; }
+const char *mfl_native_module_list(void) { return "math, numerical, heat, welding"; }
 
 void mfl_native_module_members(MflText module, char *buf, size_t size)
 {
@@ -528,6 +582,11 @@ static int check_arg(MflNativeEnv *env, int i, const MflValue *args)
         return 0;
     case MFL_NP_TEMPERATURE:
         return check_temperature(env, i, v, "an absolute temperature (K or degC)");
+    case MFL_NP_STRING:
+        if (v->kind != MFL_VAL_STRING) {
+            return arg_error(env, i, "a String", v);
+        }
+        return 0;
     case MFL_NP_NUMBERS:
     case MFL_NP_DIM_ARRAY:
     case MFL_NP_TEMPERATURES:

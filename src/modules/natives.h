@@ -1,5 +1,5 @@
 /*
- * natives.h - modules implemented in C and imported by name (v0.3):
+ * natives.h - modules implemented in C and imported by name (v0.3, welding v0.4):
  *
  *     import math         math.sin(x), math.cos, math.exp, math.log, math.sqrt, math.pi
  *     import numerical    numerical.linspace(a, b, n), numerical.sum(v), numerical.mean(v)
@@ -35,7 +35,8 @@ typedef enum {
     MFL_NP_TEMPERATURE,   /* absolute temperature: degC, or K (not delta_degC) */
     MFL_NP_NUMBERS,       /* array of numbers (any one dimension) */
     MFL_NP_DIM_ARRAY,     /* array of quantities of dimension `dim` */
-    MFL_NP_TEMPERATURES   /* array of absolute temperatures */
+    MFL_NP_TEMPERATURES,  /* array of absolute temperatures */
+    MFL_NP_STRING         /* a String (v0.4) */
 } MflNativeParamKind;
 
 typedef struct {
@@ -127,6 +128,8 @@ int mfl_native_call(MflNativeEnv *env, int index, const MflValue *args, int argc
                     MflValue *result);
 
 /* Helpers for implementations. */
+/* Copies a String argument into buf (NUL-terminated, cut to size). */
+void     mfl_native_string(const MflValue *v, char *buf, size_t size);
 double   mfl_native_si(const MflNativeEnv *env, const MflValue *v);     /* absolute SI */
 MflValue mfl_native_number(double si, MflDim dim);                      /* in SI, no unit */
 int      mfl_native_fail(MflNativeEnv *env, const char *fmt, ...);      /* returns 1 */

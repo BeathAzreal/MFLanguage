@@ -51,6 +51,7 @@ add_library(mfl_core
     src/compiler/loader.c
     src/modules/natives.c
     src/modules/heat_natives.c
+    src/modules/welding_natives.c
     src/vm/vm.c
     src/api/mfl_api.c
 )
@@ -414,6 +415,9 @@ if(MFL_BUILD_TESTS)
         "center reaches 150 degC at the sample t = 90 s [|] previous sample: 80 s -> 146[.][0-9]+ degC\ncenter does not reach 600 degC within 600 s")
     mfl_add_run_test(run_bar_heated_end examples/thermal/bar_heated_end.mfl
         tests/language/run/bar_heated_end.expected)
+    # v0.4: welding thermal cycle (Rosenthal, EN 1011-2), named arguments.
+    mfl_add_run_test(run_thermal_cycle examples/welding/thermal_cycle.mfl
+        tests/language/run/thermal_cycle.expected)
     # Physical model of the virtual calorimetry lab (examples/lab).
     mfl_add_run_test(run_lab_model examples/lab/check_model.mfl tests/language/run/lab_model.expected)
 
