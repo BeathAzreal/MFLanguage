@@ -44,7 +44,7 @@ static void usage(FILE *out)
             "       mfl --bytecode <file.mfl>   compile and print the bytecode\n"
             "       mfl --version | --help\n"
             "\n"
-            "MFL %s - pre-alpha (v0.4: named arguments, welding thermal models).\n",
+            "MFL %s - pre-alpha (v0.4.1: backward Euler, convective boundaries).\n",
             mfl_version());
 }
 

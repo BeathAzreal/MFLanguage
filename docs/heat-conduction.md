@@ -1,4 +1,4 @@
-# 1D transient heat conduction — model, method and use (v0.3)
+# 1D transient heat conduction — model, methods and use (v0.4.1)
 
 > **Implemented** (v0.3). Solver: `modules/numerical/heat1d.c` (plain C11,
 > SI doubles, independent of the parser, compiler and VM). Export:
@@ -13,9 +13,11 @@ This milestone ends with **1D heat conduction in a homogeneous bar**. The
 example `examples/thermal/bar_heated_end.mfl` must be read as the
 **verification of a 1D bar model**, not as a welding simulation: there is
 no moving heat source, no heat input from an arc, no phase change, no
-temperature-dependent properties, no convection or radiation losses and no
-2D/3D geometry. Moving heat sources (Rosenthal) and the 2D/3D welding
-simulation (Goldak) are reserved for a later milestone
+temperature-dependent properties, radiation losses or
+2D/3D geometry. Convection is available at either end of the bar; the
+lateral faces are insulated. Analytical moving-source fields are provided
+by the separate `welding` module. Numerical moving-source
+simulation (Goldak) is reserved for a later milestone
 (`docs/validation-plan.md`, stages 5–6).
 
 ## 2. Physical model
@@ -31,7 +33,7 @@ rho cp dT/dt = k d2T/dx2,     0 <= x <= L,  t >= 0,     alpha = k / (rho cp)
 | `density` | rho, constant | kg/m³ | `7850 kg/m^3` |
 | `specific_heat` | cp, constant | J/(kg·K) | `460 J/(kg*K)` |
 | initial condition | uniform T, or one T per node | absolute temperature | `20 degC` |
-| left / right end | prescribed temperature, or insulated | absolute temperature | `500 degC` |
+| left / right end | prescribed temperature, insulated, or convection | absolute temperature, h in W/(m²·K) | `100 W/(m^2*K), 20 degC` |
 | `nodes` | mesh nodes, ends included (≥ 3) | — | `21` |
 | `time_step`, `end_time` | Δt and final time | s | `0.5 s`, `10 min` |
 | `sample_every` | steps between stored samples (default 1) | — | `20` |
@@ -68,7 +70,9 @@ constant while refining, the error falls as Δx² (§11).
 
 FTCS is stable for **`Fo = α·Δt/Δx² ≤ 1/2`**. The same bound makes every
 update coefficient non-negative, including the insulated-end update
-(`1 − 2Fo ≥ 0`), so it holds for every combination of boundary conditions.
+(`1 − 2Fo ≥ 0`), for prescribed and insulated ends. At a convective end,
+the positivity bound is `Fo <= 1/[2(1 + h dx/k)]`. The minimum of these
+limits is checked before an FTCS run.
 
 - **Equality is accepted**: `Δt = Δx²/(2α)` runs. Because Δx, α and a Δt
   given in other units are rounded, the check is
@@ -300,3 +304,88 @@ metadata of `examples/thermal/small_bar.mfl`).
   Differential Equations* (FTCS stability and convergence).
 - Carslaw & Jaeger — *Conduction of Heat in Solids* (separable solutions
   of the slab with fixed end temperatures).
+
+## 14. Backward Euler and convective ends (v0.4.1)
+
+Select `heat.method("backward_euler")` or `heat.method("ftcs")`.
+FTCS remains the default. Each end accepts
+`heat.left_convection(h, ambient)` / `heat.right_convection(h, ambient)`.
+The coefficient has units W/(m² K), is finite and nonnegative, and the
+ambient temperature is absolute. A zero coefficient is an insulated end.
+Each setter replaces the previous boundary condition at that end.
+The Robin condition and plane-wall series below follow the transient
+conduction model in Incropera et al., listed in section 13. The numerical
+parameters in the example are illustrative verification inputs.
+
+For end nodes the control-volume width is dx/2. Outward flux is
+`q_out = h (T_end - T_ambient)`, at either end. With
+`Bi_dx = h dx/k`, the left boundary equation for backward Euler is
+
+```
+(1 + 2 Fo (1 + Bi_dx)) T_0(new) - 2 Fo T_1(new)
+    = T_0(old) + 2 Fo Bi_dx T_ambient
+```
+
+The right boundary has the same coefficients with the neighbour reversed.
+Interior rows have coefficients `(-Fo, 1 + 2Fo, -Fo)`.
+Prescribed temperatures are identity rows. Thomas elimination solves the
+tridiagonal system in O(N) time and O(N) workspace per step. A shortened
+last time step uses its own Fourier number and matrix. Failures leave the
+previous successful host result available.
+
+Backward Euler is first order in time, second order in space, and
+unconditionally stable for this linear model. Accuracy still requires time
+refinement. Non-finite coefficients and unsolvable finite-precision systems
+are reported as simulation errors. `heat.max_time_step()` and
+`mfl_heat1d_max_time_step()` always return the **FTCS reference limit**,
+including the convection restriction, for either selected method.
+Implicit metadata records `max_stable_time_step: null` and the separate
+`ftcs_time_step_limit`. Boundary metadata records h, ambient temperature
+and their SI units.
+
+The discrete energy per unit area is
+`E = rho cp dx (T_0/2 + T_1 + ... + T_(N-1)/2)`.
+For backward Euler with insulated/convective ends, each step satisfies
+
+```
+E(new) - E(old) = -dt [h_left (T_left(new)-Ta_left)
+                       + h_right (T_right(new)-Ta_right)]
+```
+
+### Cooling-bar acceptance case
+
+Run `examples/thermal/bar_cooling_convection.mfl`. A homogeneous
+100 mm bar initially at 500 °C exchanges heat through both ends with
+20 °C surroundings, h = 100 W/(m² K), k = 40 W/(m K),
+rho = 7800 kg/m³, cp = 500 J/(kg K). Lateral faces are insulated.
+With 41 nodes and dt = 10 s, after 600 s the computed center and surface
+are approximately 384.6673 °C and 363.0111 °C.
+
+An independent plane-wall series uses half-length a = L/2,
+Bi = h a/k = 0.125, `mu_n tan(mu_n) = Bi`, and
+
+```
+(T(x,t) - Ta)/(Ti - Ta)
+  = sum_n [4 sin(mu_n)/(2 mu_n + sin(2 mu_n))]
+          cos(mu_n (x-a)/a) exp(-alpha mu_n^2 t/a^2)
+```
+
+It gives 384.3970083 °C at the center and 362.7578855 °C at either
+surface at 600 s. The acceptance tolerance is 0.3 K for this declared
+mesh/time step. This checks a mathematical model with constant properties.
+
+The numerical test also uses a single exact Robin eigenmode
+`T = 300 + 50 cos(mu x) exp(-mu² t)`, with L = k = rho = cp = h_right = 1,
+left insulated, ambient 300 K and `mu tan(mu) = 1`. It checks first-order
+time convergence, second-order spatial convergence, the boundary energy
+balance, a shortened final step, zero-h insulation, mixed Dirichlet/Robin
+boundaries, FTCS convection stability and invalid inputs.
+
+The C API selects the method with
+`mfl_heat1d_set_method(h, MFL_HEAT_BACKWARD_EULER)` and sets either end
+with `mfl_heat1d_set_boundary_convection(h, side, coefficient,
+coefficient_unit, ambient, temperature_unit)`.
+`tests/unit/test_api.c` compares every stored temperature of this C case
+with the MFL example. WebAssembly tests run the same source and check its
+analytical temperatures, metadata and energy balance; the ESM and CommonJS
+package tests exercise the state API.

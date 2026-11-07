@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(MFL
-    VERSION 0.4.0
+    VERSION 0.4.1
     DESCRIPTION "MFL - Materials & Manufacturing Language"
     LANGUAGES C)
 
@@ -419,12 +419,19 @@ if(MFL_BUILD_TESTS)
     # Libm rounding differs across platforms. Check numbers with 1e-12
     # absolute + relative tolerance, while preserving all labels and units.
     add_executable(compare_numeric_output tests/numerical/compare_numeric_output.c)
+    add_executable(test_heat1d_implicit tests/numerical/test_heat1d_implicit.c)
+    target_link_libraries(test_heat1d_implicit PRIVATE mfl_numerical)
+    mfl_set_warnings(test_heat1d_implicit)
+    add_test(NAME numerical_heat1d_implicit COMMAND test_heat1d_implicit)
     if(MFL_LIBM)
         target_link_libraries(compare_numeric_output PRIVATE ${MFL_LIBM})
     endif()
     mfl_set_warnings(compare_numeric_output)
     mfl_add_run_test(run_thermal_cycle examples/welding/thermal_cycle.mfl
         tests/language/run/thermal_cycle.expected
+        -DNUMERIC_COMPARATOR=$<TARGET_FILE:compare_numeric_output>)
+    mfl_add_run_test(run_bar_cooling_convection examples/thermal/bar_cooling_convection.mfl
+        tests/language/run/bar_cooling_convection.expected
         -DNUMERIC_COMPARATOR=$<TARGET_FILE:compare_numeric_output>)
     # Physical model of the virtual calorimetry lab (examples/lab).
     mfl_add_run_test(run_lab_model examples/lab/check_model.mfl tests/language/run/lab_model.expected)

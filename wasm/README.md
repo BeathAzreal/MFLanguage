@@ -46,6 +46,14 @@ can run any number of times with new input values of the same dimension.
 
 ## Whole programs (playground)
 
+The v0.4.1 cooling example is `examples/thermal/bar_cooling_convection.mfl`.
+It selects `heat.method("backward_euler")` and sets both end boundaries
+with `heat.left_convection(h, ambient)` / `heat.right_convection(h, ambient)`.
+Run it through `mfl.run(path)` or a state compiled from `addSource`.
+Simulation temperatures and `state.getNumber("center", "K")` are absolute
+kelvin. The example is verified against a plane-wall analytical series;
+see `docs/heat-conduction.md`, section 14.
+
 ```html
 <script src="mfl.js"></script>
 <script>

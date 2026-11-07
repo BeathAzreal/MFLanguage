@@ -803,6 +803,79 @@ static void test_sources(void)
     mfl_state_free(S);
 }
 
+static void test_cooling_convection(void)
+{
+    Capture cap;
+    MflState *S = new_capturing(&cap, 0);
+    MflHeat1D *h = mfl_heat1d_new(S);
+    const MflHeat1D *script;
+    char filename[2048], source[4096];
+    size_t length, i, j;
+    FILE *file;
+    double value = 0;
+    snprintf(filename, sizeof filename, "%s/examples/thermal/bar_cooling_convection.mfl", g_source_dir);
+    file = fopen(filename, "rb");
+    CHECK(file != NULL);
+    if (file == NULL) {
+        mfl_heat1d_free(h);
+        mfl_state_free(S);
+        return;
+    }
+    length = fread(source, 1, sizeof source, file);
+    CHECK(!ferror(file) && length < sizeof source);
+    fclose(file);
+    CHECK_STATUS(mfl_eval(S, source, length, filename), MFL_OK);
+    script = mfl_state_heat1d(S);
+    CHECK(script != NULL);
+    CHECK_STATUS(mfl_heat1d_set(h, "length", 100, "mm"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "conductivity", 40, "W/(m*K)"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "density", 7800, "kg/m^3"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "specific_heat", 500, "J/(kg*K)"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_nodes(h, 41), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_initial_temperature(h, 500, "degC"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_boundary_convection(h, MFL_SIDE_LEFT, 100, "W/(m^2*K)", 20, "degC"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_boundary_convection(h, MFL_SIDE_RIGHT, 100, "W/(m^2*K)", 293.15, "K"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_method(h, MFL_HEAT_BACKWARD_EULER), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "time_step", 10, "s"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set(h, "end_time", 10, "min"), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_run(h), MFL_OK);
+    CHECK(mfl_heat1d_sample_count(h) == 61 && mfl_heat1d_node_count(h) == 41);
+    if (script != NULL) {
+        for (i = 0; i < 61; i++) {
+            const double *a = mfl_heat1d_profile(h, i);
+            const double *b = mfl_heat1d_profile(script, i);
+            CHECK(a != NULL && b != NULL);
+            if (a != NULL && b != NULL) {
+                for (j = 0; j < 41; j++) CHECK(fabs(a[j] - b[j]) < 1e-10);
+            }
+        }
+        CHECK_STATUS(mfl_heat1d_set_method((MflHeat1D *)script, MFL_HEAT_FTCS), MFL_ERR_ARGUMENT);
+    }
+    /* Independent plane-wall series, Bi = h*(L/2)/k = 0.125, t = 600 s. */
+    CHECK_STATUS(mfl_heat1d_temperature(h, 60, 20, "degC", &value), MFL_OK);
+    CHECK(fabs(value - 384.39700827945603) < 0.3);
+    CHECK_STATUS(mfl_heat1d_temperature(h, 60, 0, "degC", &value), MFL_OK);
+    CHECK(fabs(value - 362.75788546897456) < 0.3);
+    CHECK_STATUS(mfl_heat1d_set_boundary_convection(h, MFL_SIDE_LEFT, -1, "W/(m^2*K)", 20, "degC"), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set_boundary_convection(h, MFL_SIDE_LEFT, 1, "W/m", 20, "degC"), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_set_boundary_convection(h, MFL_SIDE_LEFT, 1, "W/(m^2*K)", 20, "delta_degC"), MFL_ERR_UNIT);
+    CHECK_STATUS(mfl_heat1d_set_boundary_convection(h, (MflSide)9, 1, "W/(m^2*K)", 20, "degC"), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set_method(h, (MflHeatMethod)99), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_heat1d_set_method(h, MFL_HEAT_FTCS), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_run(h), MFL_ERR_SIMULATION);
+    CHECK(mfl_heat1d_sample_count(h) == 61); /* failed run keeps the old result */
+    CHECK_STATUS(mfl_heat1d_set_method(h, MFL_HEAT_BACKWARD_EULER), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_run(h), MFL_OK);
+    CHECK_STATUS(mfl_heat1d_set_method(NULL, MFL_HEAT_FTCS), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(eval(S, "import heat\nheat.left_convection(1 W/m, 20 degC)\n"), MFL_ERR_PROGRAM);
+    CHECK_STATUS(eval(S, "import heat\nheat.left_convection(1 W/(m^2*K), 20 delta_degC)\n"), MFL_ERR_PROGRAM);
+    CHECK_STATUS(eval(S, "import heat\nheat.left_convection(-1 W/(m^2*K), 20 degC)\n"), MFL_ERR_RUNTIME);
+    CHECK_STATUS(eval(S, "import heat\nheat.method(\"typo\")\n"), MFL_ERR_RUNTIME);
+    CHECK_STATUS(mfl_eval(S, source, length, filename), MFL_OK);
+    mfl_heat1d_free(h);
+    mfl_state_free(S);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) {
@@ -826,6 +899,7 @@ int main(int argc, char **argv)
     test_heat_memory();
     test_heat_export_api();
     test_sources();
+    test_cooling_convection();
     printf("test_api: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

@@ -133,8 +133,8 @@ gives the state the files instead of letting it open them:
 ```c
 mfl_add_source(S, "models/weld.mfl", weld_text, strlen(weld_text));
 mfl_add_source(S, "models/steel.mfl", steel_text, strlen(steel_text)); /* imported by weld.mfl */
-MflScript *weld = mfl_script_compile_source(S, "models/weld.mfl");
 mfl_set_number(S, "U", 25, "V");
+MflScript *weld = mfl_script_compile_source(S, "models/weld.mfl");
 mfl_script_run(S, weld);           /* run again after changing the inputs */
 mfl_get_number(S, "t85", "s", &t85);
 ```
@@ -149,7 +149,18 @@ mfl_get_number(S, "t85", "s", &t85);
   package (`addSource`, `setNumber`, `compile(path).run()`, `getNumber`);
   see `wasm/README.md`.
 
-## 8. Not available yet
+## 8. Backward Euler and convective ends (v0.4.1)
+
+For the v0.4.1 thermal solver, select
+`mfl_heat1d_set_method(h, MFL_HEAT_BACKWARD_EULER)` and set either end with
+`mfl_heat1d_set_boundary_convection(h, MFL_SIDE_LEFT, 100, "W/(m^2*K)",
+20, "degC")` (use `MFL_SIDE_RIGHT` for the other end).
+Set the bar, initial temperature, time step and end time through the
+existing setters, then call `mfl_heat1d_run`. FTCS is the default method.
+The complete cooling case and its analytical verification are described in
+`docs/heat-conduction.md`, section 14.
+
+## 9. Not available yet
 
 - A host-supplied allocator (only a memory limit for now).
 - Strings, booleans and arrays as inputs/outputs through the API (scripts

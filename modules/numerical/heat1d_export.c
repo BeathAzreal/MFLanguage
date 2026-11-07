@@ -177,6 +177,15 @@ static void boundary(Out *o, const MflH1Config *c, MflH1Side side, int last)
         out_str(o, ", \"position\": ");
         out_num(o, side == MFL_H1_LEFT ? 0.0 : c->length);
         out_str(o, "}");
+    } else if (c->boundary[side] == MFL_H1_BC_CONVECTION) {
+        out_str(o, "{\"kind\": \"convection\", \"coefficient\": ");
+        out_num(o, c->boundary_coefficient[side]);
+        out_str(o, ", \"ambient_temperature\": ");
+        out_num(o, c->boundary_temperature[side]);
+        out_str(o, ", \"coefficient_unit\": \"W/(m^2*K)\", \"ambient_temperature_unit\": \"K\"");
+        out_str(o, ", \"position\": ");
+        out_num(o, side == MFL_H1_LEFT ? 0.0 : c->length);
+        out_str(o, "}");
     } else {
         out_str(o, "{\"kind\": \"insulated\", \"position\": ");
         out_num(o, side == MFL_H1_LEFT ? 0.0 : c->length);
@@ -205,7 +214,12 @@ int mfl_h1_write_metadata(const MflH1Result *r, const MflH1Provenance *prov, con
            "transient heat conduction in a homogeneous 1D bar with constant properties: "
            "rho*cp*dT/dt = k*d2T/dx2, alpha = k/(rho*cp)", 0);
     kv_str(o, 1, "method",
-           "explicit finite differences (FTCS) on a uniform mesh; insulated ends by a mirror "
+           c->method == MFL_H1_BACKWARD_EULER
+           ? "backward Euler on a uniform mesh; tridiagonal solve; Robin end half-volumes"
+           : (c->boundary[0] == MFL_H1_BC_CONVECTION || c->boundary[1] == MFL_H1_BC_CONVECTION)
+           ? "explicit finite differences (FTCS) on a uniform mesh; Robin end half-volumes; "
+             "time_step <= dx^2/(2 alpha (1 + h dx/k)) at convective ends"
+           : "explicit finite differences (FTCS) on a uniform mesh; insulated ends by a mirror "
            "node; stable for Fourier number alpha*dt/dx^2 <= 1/2", 0);
     kv_str(o, 1, "scope",
            "verification of a 1D bar model; moving heat sources and 2D/3D welding simulation are "
@@ -276,7 +290,13 @@ int mfl_h1_write_metadata(const MflH1Result *r, const MflH1Provenance *prov, con
     kv_size(o, 2, "steps", r->steps, 0);
     kv_num(o, 2, "last_step", r->last_step, 0);
     kv_num(o, 2, "fourier_number", r->fourier, 0);
-    kv_num(o, 2, "max_stable_time_step", r->max_time_step, 0);
+    if (c->method == MFL_H1_BACKWARD_EULER) {
+        key(o, 2, "max_stable_time_step");
+        out_str(o, "null,\n");
+        kv_num(o, 2, "ftcs_time_step_limit", r->max_time_step, 0);
+    } else {
+        kv_num(o, 2, "max_stable_time_step", r->max_time_step, 0);
+    }
     kv_str(o, 2, "end_time_rule",
            "full steps of time_step, then one shorter step ending exactly at end_time when it "
            "falls between steps", 1);

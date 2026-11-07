@@ -42,8 +42,8 @@ extern "C" {
 
 #define MFL_VERSION_MAJOR 0
 #define MFL_VERSION_MINOR 4
-#define MFL_VERSION_PATCH 0
-#define MFL_VERSION_STRING "0.4.0-dev"
+#define MFL_VERSION_PATCH 1
+#define MFL_VERSION_STRING "0.4.1-dev"
 
 /* Returns the library version string (static storage, never NULL). */
 const char *mfl_version(void);
@@ -227,6 +227,7 @@ void mfl_script_free(MflScript *script);
 typedef struct MflHeat1D MflHeat1D;
 
 typedef enum { MFL_SIDE_LEFT = 0, MFL_SIDE_RIGHT = 1 } MflSide; /* x = 0, x = L */
+typedef enum { MFL_HEAT_FTCS = 0, MFL_HEAT_BACKWARD_EULER } MflHeatMethod;
 
 /* Creates an empty configuration bound to S (errors, memory limit).
  * Returns NULL if S is NULL or memory runs out. */
@@ -261,7 +262,17 @@ MflStatus mfl_heat1d_set_boundary_temperature(MflHeat1D *h, MflSide side, double
 /* Insulated end (zero heat flux). */
 MflStatus mfl_heat1d_set_boundary_insulated(MflHeat1D *h, MflSide side);
 
-/* Largest stable time step for the current bar and mesh, dx^2 / (2 alpha). */
+/* Selects the time integrator. Default FTCS; backward Euler is implicit. */
+MflStatus mfl_heat1d_set_method(MflHeat1D *h, MflHeatMethod method);
+
+/* Outward heat flux = coefficient * (T - ambient). Coefficient >= 0 in
+ * W/(m^2*K), ambient an absolute temperature. Zero coefficient insulates. */
+MflStatus mfl_heat1d_set_boundary_convection(MflHeat1D *h, MflSide side,
+    double coefficient, const char *coefficient_unit, double ambient, const char *temperature_unit);
+
+/* FTCS positivity limit for this bar and mesh, including convection.
+ * This remains an explicit reference limit when backward Euler is selected;
+ * backward Euler has no stability restriction on the time step. */
 MflStatus mfl_heat1d_max_time_step(MflHeat1D *h, const char *unit, double *out);
 
 /* Validates the configuration and runs the simulation. */

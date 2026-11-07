@@ -1,0 +1,18 @@
+# 100 mm homogeneous bar, insulated lateral faces, convection at both ends.
+# Constant properties. Compare with the plane-wall eigenfunction solution
+# in docs/heat-conduction.md. Backward Euler dt = 10 s exceeds the FTCS limit.
+import heat
+
+heat.bar(100 mm, 40 W/(m*K), 7800 kg/m^3, 500 J/(kg*K))
+heat.nodes(41)
+heat.initial_temperature(500 degC)
+heat.left_convection(100 W/(m^2*K), 20 degC)
+heat.right_convection(100 W/(m^2*K), 20 degC)
+heat.method("backward_euler")
+heat.time_step(10 s)
+heat.end_time(600 s)
+heat.sample_every(1)
+heat.run()
+let center = heat.temperature(50 mm, 600 s)
+let surface = heat.temperature(0 mm, 600 s)
+print("center:", center.to(degC), "| surface:", surface.to(degC))

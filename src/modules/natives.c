@@ -342,6 +342,13 @@ static const MflNative natives[] = {
      num_mean},
 
     /* heat (heat_natives.c; docs/heat-conduction.md) */
+    {"heat", "method", 1, {P("name", MFL_NP_STRING)}, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_method},
+    {"heat", "left_convection", 2,
+     {PD("coefficient", MFL_NP_DIM, DIM(0, 1, -3, 0, -1), "W/(m^2*K)"),
+      P("ambient", MFL_NP_TEMPERATURE)}, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_left_convection},
+    {"heat", "right_convection", 2,
+     {PD("coefficient", MFL_NP_DIM, DIM(0, 1, -3, 0, -1), "W/(m^2*K)"),
+      P("ambient", MFL_NP_TEMPERATURE)}, MFL_NR_NIL, NODIM, 0, 0.0, mfl_heat_right_convection},
     {"heat", "bar", 4,
      {PD("length", MFL_NP_DIM, LENGTH, "m"), PD("conductivity", MFL_NP_DIM, CONDUCTIVITY, "W/(m*K)"),
       PD("density", MFL_NP_DIM, DENSITY, "kg/m^3"),

@@ -1256,6 +1256,41 @@ MflStatus mfl_heat1d_set_boundary_insulated(MflHeat1D *h, MflSide side)
                      msg, 0);
 }
 
+MflStatus mfl_heat1d_set_method(MflHeat1D *h, MflHeatMethod method)
+{
+    char msg[H1_MSG];
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    return h1_status(h->S, mfl_h1_set_method(&h->config, (MflH1Method)method,
+                                             msg, sizeof msg), msg, 0);
+}
+
+MflStatus mfl_heat1d_set_boundary_convection(MflHeat1D *h, MflSide side,
+    double coefficient, const char *coefficient_unit, double ambient, const char *temperature_unit)
+{
+    double si_h = 0;
+    double kelvin = 0;
+    char msg[H1_MSG];
+    MflStatus st;
+    H1_BEGIN(h);
+    H1_CONFIGURABLE(h);
+    if ((st = check_side(h, side)) != MFL_OK) {
+        return st;
+    }
+    st = to_si(h->S, "convection coefficient", coefficient, coefficient_unit,
+               dim3(0, 1, -3, -1), 0, &si_h, NULL, 0);
+    if (st != MFL_OK) {
+        return st;
+    }
+    st = to_si(h->S, "convection ambient temperature", ambient, temperature_unit,
+               dim3(0, 0, 0, 1), 1, &kelvin, NULL, 0);
+    if (st != MFL_OK) {
+        return st;
+    }
+    return h1_status(h->S, mfl_h1_set_convection(&h->config, (MflH1Side)side, si_h, kelvin,
+                                                 msg, sizeof msg), msg, 0);
+}
+
 MflStatus mfl_heat1d_max_time_step(MflHeat1D *h, const char *unit, double *out)
 {
     char msg[H1_MSG];
