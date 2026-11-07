@@ -28,6 +28,7 @@ na IC ou no TCC.
 | 2026-11-06 | API de embutir (`include/mfl/mfl.h`, `src/api/`, exemplo, testes, `docs/embedding.md`) | Projetou e implementou a API, o exemplo e os testes; propôs, mediu e reverteu um experimento de precisão | Pediu para continuar (o merge do PR #5 ficou pendente de aprovação explícita) | Testes automatizados; revisão do projeto da API pendente |
 | 2026-11-07 | MFL v0.2 completa (núcleo, testes por funcionalidade, demonstração de aceite, documentação) | Implementou, testou (incluindo fuzz e sanitizers), resolveu as decisões em aberto e documentou | Definiu o escopo e os critérios de aceite da v0.2 | Testes automatizados e de aceite; revisão das decisões de linguagem (ADR-026 a 034) pendente |
 | 2026-11-06 | MFL v0.3 (import, módulo numerical, solver térmico 1D, exportação, API C, pacotes no CI) | Projetou e implementou, verificou contra a solução analítica e com sanitizers, documentou (ADR-035 a 040) | Definiu o escopo, os critérios de aceite e o limite do marco (só condução 1D) | Testes automatizados, CI em quatro plataformas; revisão do modelo físico e dos valores de material pendente |
+| 2026-11-07 | MFL v0.4 (argumentos nomeados, módulo welding, fontes em memória, pacote npm) | Implementou, verificou contra referências independentes (Bessel, cruzamentos no campo, campo distante, EN 1011-2), documentou (ADR-041 a 043) | Pediu a v0.4 voltada à integração com o Soldamat | Testes automatizados e CI; revisão das fórmulas da EN 1011-2 contra a norma pendente |
 
 ## Boas práticas adotadas
 

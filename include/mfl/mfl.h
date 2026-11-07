@@ -41,9 +41,9 @@ extern "C" {
 #endif
 
 #define MFL_VERSION_MAJOR 0
-#define MFL_VERSION_MINOR 3
+#define MFL_VERSION_MINOR 4
 #define MFL_VERSION_PATCH 0
-#define MFL_VERSION_STRING "0.3.0-dev"
+#define MFL_VERSION_STRING "0.4.0-dev"
 
 /* Returns the library version string (static storage, never NULL). */
 const char *mfl_version(void);

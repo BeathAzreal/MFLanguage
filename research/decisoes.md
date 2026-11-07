@@ -489,3 +489,50 @@ Status possíveis: **Proposta**, **Aceita**, **Substituída por ADR-XXX**,
   contração em FMA (GCC/Clang); o MSVC não contrai por padrão. Assim o
   solver dá os mesmos bits em x86-64 e ARM64, e a comparação CLI ↔ C pode
   usar tolerância de 1e-9 K com diferença medida de 0 K.
+
+## ADR-041 — Argumentos nomeados
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Contexto:** as funções de soldagem têm até nove parâmetros com a mesma
+  dimensão (x, y, z; densidade e calor específico em ordens fáceis de
+  trocar). Na ordem posicional, um erro de ordem passa pela verificação de
+  dimensões quando os parâmetros têm a mesma unidade.
+- **Decisão:** `f(a, c: 3, b: 2)`: posicionais primeiro, depois nomeados em
+  qualquer ordem; cada parâmetro uma vez; erros em tempo de compilação que
+  listam os parâmetros. Os argumentos são avaliados **na ordem dos
+  parâmetros** (o verificador reordena a lista), o que mantém o compilador
+  e a VM inalterados. Funções embutidas e chamadas por valor (`Any`)
+  rejeitam nomes, porque o nome dos parâmetros só seria conhecido na
+  execução.
+- **Alternativa rejeitada:** avaliar na ordem escrita, que exigiria
+  temporários e um opcode novo; nenhuma função atual tem efeitos colaterais
+  nos argumentos que tornem a diferença visível além de `print`, e a regra
+  está documentada.
+
+## ADR-042 — Módulo `welding`: modelos analíticos verificados
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Decisão:** antes do solver numérico com fonte móvel, oferecer os
+  modelos analíticos que o Soldamat precisa (heat input EN 1011-1,
+  Rosenthal 2-D/3-D, t8/5 em forma fechada e pela EN 1011-2, pico exato e
+  larguras ZF/ZTA), em C puro (`modules/numerical/welding.c`, SI). O pico é
+  o máximo exato do campo (bissecção na derivada), não a fórmula
+  aproximada de Adams. Temperaturas sempre absolutas; pré-aquecimento
+  ≥ 500 °C é erro.
+- **Verificação:** referências independentes do código (integral de
+  Bessel, cruzamentos de 800/500 °C medidos no próprio campo, limites de
+  campo distante, valores da EN 1011-2 calculados em Python).
+- **Limites:** propriedades constantes, sem perdas, singular no arco;
+  documentados em `docs/welding.md`.
+
+## ADR-043 — Fontes em memória e o pacote web
+
+- **Data:** 2026-11-07 · **Status:** Aceita
+- **Decisão:** `mfl_add_source` guarda textos por caminho normalizado;
+  `import "x.mfl"` procura neles antes do disco, e o disco só com
+  `mfl_set_file_imports`. O pacote npm `mfl-wasm` expõe o mesmo estado
+  (entradas nomeadas com unidade, compilar uma vez, executar muitas,
+  resultados em qualquer unidade), em ESM e CommonJS com tipos
+  TypeScript verificados com `tsc --strict` no CI.
+- **Motivo:** um jogo carrega os modelos junto com o aplicativo e não deve
+  abrir arquivos; recompilar a cada passe seria desperdício.

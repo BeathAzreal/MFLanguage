@@ -1,7 +1,7 @@
 {
   "format": "mfl-heat1d-metadata",
   "format_version": 1,
-  "mfl_version": "0.3.0-dev",
+  "mfl_version": "0.4.0-dev",
   "model": "transient heat conduction in a homogeneous 1D bar with constant properties: rho*cp*dT/dt = k*d2T/dx2, alpha = k/(rho*cp)",
   "method": "explicit finite differences (FTCS) on a uniform mesh; insulated ends by a mirror node; stable for Fourier number alpha*dt/dx^2 <= 1/2",
   "scope": "verification of a 1D bar model; moving heat sources and 2D/3D welding simulation are outside this version",

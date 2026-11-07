@@ -346,6 +346,17 @@ fn name(p1: T1, p2, ...) -> R {    # annotations optional
   from other functions (recursion and mutual recursion are allowed).
 - Calls need exactly the declared number of arguments (no defaults, no
   variadic functions).
+- **Named arguments** (v0.4): `heat_input(voltage: 25 V, current: 250 A,
+  speed: 5 mm/s, efficiency: 0.8)`. Positional arguments come first, then
+  named ones in any order (`f(1, c: 3, b: 2)`); a positional argument after
+  a named one is a syntax error. Each parameter is given exactly once:
+  `'f' has no parameter 'c' (its parameters are: a, b)`,
+  `argument 'a' of 'f' is given twice`, `missing argument 'a' of 'f'`.
+  Arguments are **evaluated in parameter order**, whatever order they are
+  written in, so `f(b: g(), a: h())` calls `h` first. Named arguments work
+  for top-level functions and module functions (`welding.t85_thin(...)`);
+  built-ins (`print`, `len`, `.to`, ...) and calls through a value whose
+  function is only known at run time reject them with a compile error.
 - A function is a value: `let g = twice; apply(g, 4 s)`; printing it shows
   `<fn twice>`. Calls through a value are checked when they run (arity,
   annotated parameters).
@@ -541,6 +552,7 @@ functions. Both rules are syntax errors.
 | `math` | `sin(x)`, `cos(x)`, `exp(x)`, `log(x)` — `x` dimensionless; `sqrt(x)` — any quantity whose dimension has even exponents, the result has half the exponents (`math.sqrt(16 m^2)` is `4 m`); constant `math.pi` |
 | `numerical` | `linspace(start, stop, count)`, `sum(values)`, `mean(values)` (§13.4) |
 | `heat` | 1D transient heat conduction (`docs/heat-conduction.md`) |
+| `welding` | heat input (EN 1011-1), Rosenthal thick/thin plate fields, t8/5 (closed forms and EN 1011-2), peak temperatures and fused-zone/HAZ widths (`docs/welding.md`, v0.4) |
 
 - Members are always written qualified: `numerical.sum(v)`. The module
   name is visible **only in the file that imports it**; using it elsewhere
@@ -549,6 +561,9 @@ functions. Both rules are syntax errors.
 - A module name cannot be used as a value, redeclared in that file, or
   imported twice. An unknown module or member is an error that lists the
   available names.
+- Module function parameters may be quantities of a fixed dimension,
+  absolute temperatures, numbers, arrays or strings (`welding.efficiency("MAG")`,
+  v0.4). They accept named arguments (§8.1).
 - Calls are checked like calls of annotated functions: before running when
   the argument types are known, when they run otherwise (§4.1), with
   messages such as `argument 2 of 'numerical.linspace' ('stop') must be

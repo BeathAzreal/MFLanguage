@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(MFL
-    VERSION 0.3.0
+    VERSION 0.4.0
     DESCRIPTION "MFL - Materials & Manufacturing Language"
     LANGUAGES C)
 
@@ -135,7 +135,7 @@ if(MFL_BUILD_EXAMPLES)
     install(TARGETS mfl_heat_host RUNTIME DESTINATION bin)
 endif()
 install(DIRECTORY examples/ DESTINATION examples)
-install(FILES docs/language-spec.md docs/heat-conduction.md docs/embedding.md docs/units.md
+install(FILES docs/language-spec.md docs/heat-conduction.md docs/embedding.md docs/units.md docs/welding.md
         DESTINATION docs)
 install(FILES LICENSE DESTINATION .)
 install(FILES packaging/README-package.md DESTINATION . RENAME README.md)

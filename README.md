@@ -111,6 +111,43 @@ is in [`examples/thermal/output/`](examples/thermal/output/).
 > simulation**: moving heat sources and 2D/3D welding models are reserved
 > for a later milestone.
 
+## v0.4: named arguments and welding thermal models
+
+```mfl
+import welding
+
+let Q = welding.heat_input(voltage: 25 V, current: 250 A, speed: 5 mm/s,
+                           efficiency: welding.efficiency("MAG"))      # 1 kJ/mm
+print(welding.en1011_transition(heat_input: Q, preheat: 20 degC).to(mm))   # 14.66 mm -> 2-D
+print(welding.t85_en1011(heat_input: Q, thickness: 10 mm, preheat: 20 degC)) # 11.36 s
+print(welding.peak_thin(power: 5 kW, speed: 5 mm/s, thickness: 10 mm,
+                        conductivity: 30 W/(m*K), density: 7850 kg/m^3,
+                        specific_heat: 640 J/(kg*K), preheat: 20 degC,
+                        distance: 8 mm).to(degC))                        # 609.8 degC
+```
+
+- **Named arguments** for functions and module functions, checked before
+  running (`'f' has no parameter 'c' (its parameters are: a, b)`).
+- **`welding` module**: EN 1011-1 efficiency factors and heat input;
+  Rosenthal thick- and thin-plate temperature fields; t8/5 in closed form
+  and by EN 1011-2 (with the 2-D/3-D transition thickness); exact peak
+  temperatures and the distance at which a peak is reached (fused-zone
+  half-width, HAZ width). Formulas, limits and the verification (t8/5
+  closed forms against the cooling measured on the fields, peaks against
+  the far-field results) are in [`docs/welding.md`](docs/welding.md).
+  Full example: [`examples/welding/thermal_cycle.mfl`](examples/welding/thermal_cycle.mfl).
+- **Web package** `mfl-wasm` (ESM, CommonJS, TypeScript types): a host
+  keeps a model loaded, sets named inputs with units, compiles once and
+  runs many times, and reads named results in any unit
+  ([`wasm/README.md`](wasm/README.md)). The same in C: `mfl_add_source`
+  and `mfl_script_compile_source` ([`docs/embedding.md`](docs/embedding.md)).
+
+> **Scope.** These are analytical models (constant properties, no surface
+> losses, singular at the arc). They estimate the heat-affected zone and
+> cooling times; they do not predict the weld pool, penetration or the
+> microstructure. The numerical moving-source simulation is a later
+> milestone.
+
 ## Scientific goals
 
 - Provide a small, auditable language for **mathematical modelling** of
@@ -271,9 +308,9 @@ Inspect the stages: `--tokens` (lexer), `--ast` (parser), `--types`
 | **v0.0.x** ✅ | Repository, documentation, build system, CI |
 | **v0.1 — core** ✅ | Lexer, parser, AST, bytecode compiler, VM; numbers, strings, `let`, arithmetic, `print`; SI units with dimension checking and `.to()`; heat-input conformance test passing; C embedding API |
 | **v0.2** ✅ | Functions, control flow, arrays, gradual type annotations, absolute temperatures, error messages with source locations at compile and run time |
-| **v0.3** ✅ (this release) | `import`; `numerical` module; 1D transient heat conduction (explicit FD) verified against the analytical solution; CSV/JSON export; C API for simulations; packages |
-| **v0.3.x** | Implicit schemes (backward Euler, Crank–Nicolson), convection boundaries, ODE integrators |
-| **v0.4** | C embedding API stabilised; experiment records (parameters, units, method, results) |
+| **v0.3** ✅ | `import`; `numerical` module; 1D transient heat conduction (explicit FD) verified against the analytical solution; CSV/JSON export; C API for simulations; packages; WebAssembly build |
+| **v0.4** ✅ (this release) | Named arguments; `welding` module (EN 1011-1/-2, Rosenthal fields, t8/5, peak temperatures, HAZ width) with verification; in-memory sources and the `mfl-wasm` web package for applications |
+| **v0.4.x** | Implicit schemes (backward Euler, Crank–Nicolson), convection boundaries, ODE integrators; experiment records (parameters, units, method, results) |
 | **v0.5** | 2D/3D moving heat sources, Goldak model, experimental comparison |
 | **later** | C/C++/Fortran library bindings, game integration |
 
@@ -307,7 +344,9 @@ materials, welding, manufacturing and numerical methods.
 - ✅ 1D transient heat conduction: FTCS with stability check, CSV/JSON export (atomic, with completion marker), same solver from MFL, the CLI and C
 - ✅ CI on Linux (GCC, Clang), macOS, Windows with warnings as errors; ASan + UBSan; packages with a smoke test
 - ⏳ `break`/`continue`, closures, a garbage collector for arrays
-- ⏳ Implicit schemes, moving heat sources, 2D/3D and welding models — **design only**
+- ✅ Named arguments; `welding` module with analytical thermal models (Rosenthal, EN 1011-1/-2), verified (`docs/welding.md`)
+- ✅ WebAssembly build and the `mfl-wasm` npm package (ESM/CJS, TypeScript types, state API)
+- ⏳ Implicit schemes, numerical moving heat sources (2D/3D, Goldak) — **design only**
 
 ## License
 

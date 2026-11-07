@@ -10,7 +10,7 @@ bin/        mfl (the interpreter), mfl_heat_host (C host example, built)
 examples/   .mfl examples (thermal/, welding/, basic/) and C sources (embedding/)
 include/    mfl/mfl.h  (public C API)
 lib/        static libraries mfl_core and mfl_numerical (link both, and libm on Linux/macOS)
-docs/       language specification, heat conduction model, embedding guide
+docs/       language specification, heat conduction model, embedding guide, welding thermal models
 ```
 
 ## Run the examples
