@@ -129,6 +129,22 @@ void mfl_clear_inputs(MflState *S);
  * always allowed. */
 void mfl_set_file_imports(MflState *S, int enabled);
 
+/* In-memory sources (v0.4): a host that ships its .mfl files inside the
+ * program (a game, a web page) adds them here instead of on disk. Paths
+ * use '/' and are normalised ("models/./steel.mfl" is "models/steel.mfl").
+ * `import "file.mfl"` looks for an added source first (always allowed),
+ * then for a file when mfl_set_file_imports(S, 1). The text is copied;
+ * adding the same path again replaces it. */
+MflStatus mfl_add_source(MflState *S, const char *path, const char *text, size_t length);
+
+/* Removes every added source. */
+void mfl_clear_sources(MflState *S);
+
+/* Checks and compiles the added source `path` (v0.4); like
+ * mfl_script_compile() with that text and that name. NULL on failure:
+ * MFL_ERR_NOT_FOUND when no such source was added. */
+MflScript *mfl_script_compile_source(MflState *S, const char *path);
+
 /* Limits the number of VM instructions per run (0 = no limit, the
  * default). A run that exceeds it fails with MFL_ERR_RUNTIME, so an
  * endless loop in a model cannot freeze the host (v0.2). */

@@ -751,6 +751,58 @@ static void test_heat_export_api(void)
     mfl_state_free(S);
 }
 
+/* v0.4: in-memory sources, compiled by name, importing each other. */
+static void test_sources(void)
+{
+    Capture cap;
+    MflState *S = new_capturing(&cap, 0);
+    const char *steel = "let k_s = 30 W/(m*K)\n";
+    const char *model = "import \"materials/steel.mfl\"\nimport welding\n"
+                        "let Q = welding.heat_input(voltage: U, current: I, speed: v, efficiency: 0.8)\n"
+                        "let t85 = welding.t85_thick(heat_input: Q, conductivity: k_s, preheat: 20 degC)\n";
+    MflScript *sc;
+    double v = 0;
+
+    CHECK_STATUS(mfl_add_source(S, "game/materials/steel.mfl", steel, strlen(steel)), MFL_OK);
+    CHECK_STATUS(mfl_add_source(S, "game/./weld.mfl", model, strlen(model)), MFL_OK);
+    CHECK_STATUS(mfl_set_number(S, "U", 25, "V"), MFL_OK);
+    CHECK_STATUS(mfl_set_number(S, "I", 250, "A"), MFL_OK);
+    CHECK_STATUS(mfl_set_number(S, "v", 5, "mm/s"), MFL_OK);
+    sc = mfl_script_compile_source(S, "game/weld.mfl");
+    CHECK(sc != NULL);
+    if (sc != NULL) {
+        CHECK_STATUS(mfl_script_run(S, sc), MFL_OK);
+        CHECK_STATUS(mfl_get_number(S, "Q", "kJ/mm", &v), MFL_OK);
+        CHECK(fabs(v - 1.0) < 1e-12);
+        CHECK_STATUS(mfl_get_number(S, "t85", "s", &v), MFL_OK);
+        CHECK(fabs(v - 1e6 / (2 * 3.14159265358979323846 * 30) * (1.0 / 480 - 1.0 / 780)) < 1e-9);
+        /* run many: change an input, run the same compiled script */
+        CHECK_STATUS(mfl_set_number(S, "v", 10, "mm/s"), MFL_OK);
+        CHECK_STATUS(mfl_script_run(S, sc), MFL_OK);
+        CHECK_STATUS(mfl_get_number(S, "Q", "kJ/mm", &v), MFL_OK);
+        CHECK(fabs(v - 0.5) < 1e-12);
+        mfl_script_free(sc);
+    }
+    /* replacing a source changes what the next compilation sees */
+    CHECK_STATUS(mfl_add_source(S, "game/materials/steel.mfl", "let k_s = 45 W/(m*K)\n", 21), MFL_OK);
+    sc = mfl_script_compile_source(S, "game/weld.mfl");
+    CHECK(sc != NULL && mfl_script_run(S, sc) == MFL_OK);
+    CHECK_STATUS(mfl_get_number(S, "k_s", "W/(m*K)", &v), MFL_OK);
+    CHECK(v == 45);
+    mfl_script_free(sc);
+    /* errors */
+    CHECK(mfl_script_compile_source(S, "game/none.mfl") == NULL);
+    CHECK(strstr(mfl_error_message(S), "no source 'game/none.mfl'") != NULL);
+    CHECK_STATUS(mfl_add_source(S, "game/bad.mfl", "import \"missing.mfl\"\n", 22), MFL_OK);
+    CHECK(mfl_script_compile_source(S, "game/bad.mfl") == NULL);
+    CHECK(strstr(mfl_error_message(S), "game/bad.mfl:1:1: error: cannot read the imported file") != NULL);
+    CHECK_STATUS(mfl_add_source(NULL, "a.mfl", "", 0), MFL_ERR_ARGUMENT);
+    CHECK_STATUS(mfl_add_source(S, NULL, "", 0), MFL_ERR_ARGUMENT);
+    mfl_clear_sources(S);
+    CHECK(mfl_script_compile_source(S, "game/weld.mfl") == NULL);
+    mfl_state_free(S);
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) {
@@ -773,6 +825,7 @@ int main(int argc, char **argv)
     test_heat_from_script();
     test_heat_memory();
     test_heat_export_api();
+    test_sources();
     printf("test_api: %d checks, %d failures\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

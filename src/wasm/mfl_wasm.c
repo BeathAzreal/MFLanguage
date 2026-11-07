@@ -321,3 +321,101 @@ EXPORT(mfl_wasm_sim_csv) const char *mfl_wasm_sim_csv(void) { return g_csv.data;
 EXPORT(mfl_wasm_sim_csv_length) size_t mfl_wasm_sim_csv_length(void) { return g_csv.length; }
 EXPORT(mfl_wasm_sim_metadata) const char *mfl_wasm_sim_metadata(void) { return g_meta.data; }
 EXPORT(mfl_wasm_sim_metadata_length) size_t mfl_wasm_sim_metadata_length(void) { return g_meta.length; }
+
+/* ------------------------------------------------------------------------ */
+/* States (v0.4): the public C API, for hosts that keep a model loaded       */
+/* ------------------------------------------------------------------------ */
+/*
+ * The functions below wrap include/mfl/mfl.h one to one, so a page can do
+ * what a C host does: add sources, set named inputs with units, compile a
+ * model once, run it many times and read named results in any unit. Each
+ * state is independent; print() output goes to env.mfl_host_write(1, ...).
+ */
+
+static void state_output(void *user, const char *text, size_t length)
+{
+    (void)user;
+    mfl_host_write(1, text, length);
+}
+
+EXPORT(mfl_wasm_state_new) MflState *mfl_wasm_state_new(void)
+{
+    MflConfig cfg;
+    cfg.output = state_output;
+    cfg.user = NULL;
+    cfg.memory_limit = 0;
+    return mfl_state_new(&cfg);
+}
+
+EXPORT(mfl_wasm_state_free) void mfl_wasm_state_free(MflState *S) { mfl_state_free(S); }
+
+EXPORT(mfl_wasm_error) const char *mfl_wasm_error(MflState *S) { return mfl_error_message(S); }
+
+EXPORT(mfl_wasm_status_name) const char *mfl_wasm_status_name(int status)
+{
+    return mfl_status_name((MflStatus)status);
+}
+
+EXPORT(mfl_wasm_add_source) int mfl_wasm_add_source(MflState *S, const char *path, const char *text,
+                                                    size_t length)
+{
+    return (int)mfl_add_source(S, path, text, length);
+}
+
+EXPORT(mfl_wasm_set_number) int mfl_wasm_set_number(MflState *S, const char *name, double value,
+                                                    const char *unit)
+{
+    return (int)mfl_set_number(S, name, value, unit);
+}
+
+EXPORT(mfl_wasm_clear_inputs) void mfl_wasm_clear_inputs(MflState *S) { mfl_clear_inputs(S); }
+
+EXPORT(mfl_wasm_compile) MflScript *mfl_wasm_compile(MflState *S, const char *path)
+{
+    return mfl_script_compile_source(S, path);
+}
+
+EXPORT(mfl_wasm_script_free) void mfl_wasm_script_free(MflScript *sc) { mfl_script_free(sc); }
+
+EXPORT(mfl_wasm_script_run) int mfl_wasm_script_run(MflState *S, MflScript *sc,
+                                                    unsigned long long max_steps)
+{
+    mfl_set_instruction_limit(S, max_steps);
+    return (int)mfl_script_run(S, sc);
+}
+
+EXPORT(mfl_wasm_get_number) int mfl_wasm_get_number(MflState *S, const char *name, const char *unit,
+                                                    double *out)
+{
+    return (int)mfl_get_number(S, name, unit, out);
+}
+
+/* The last heat.run() of the last successful run on S (NULL if none). */
+EXPORT(mfl_wasm_state_heat1d) const MflHeat1D *mfl_wasm_state_heat1d(MflState *S)
+{
+    return mfl_state_heat1d(S);
+}
+
+EXPORT(mfl_wasm_h1_samples) int mfl_wasm_h1_samples(const MflHeat1D *h)
+{
+    return (int)mfl_heat1d_sample_count(h);
+}
+
+EXPORT(mfl_wasm_h1_nodes) int mfl_wasm_h1_nodes(const MflHeat1D *h) { return (int)mfl_heat1d_node_count(h); }
+
+EXPORT(mfl_wasm_h1_profile) const double *mfl_wasm_h1_profile(const MflHeat1D *h, int sample)
+{
+    return mfl_heat1d_profile(h, (size_t)sample);
+}
+
+EXPORT(mfl_wasm_h1_time) double mfl_wasm_h1_time(const MflHeat1D *h, int sample)
+{
+    double t = 0;
+    return mfl_heat1d_time(h, (size_t)sample, "s", &t) == MFL_OK ? t : -1;
+}
+
+EXPORT(mfl_wasm_h1_position) double mfl_wasm_h1_position(const MflHeat1D *h, int node)
+{
+    double x = 0;
+    return mfl_heat1d_position(h, (size_t)node, "m", &x) == MFL_OK ? x : -1;
+}
