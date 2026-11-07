@@ -39,7 +39,14 @@ if(NOT exit_code STREQUAL "${EXPECTED_EXIT}")
     message(FATAL_ERROR
         "exit code ${exit_code}, expected ${EXPECTED_EXIT}\nstderr:\n${stderr_text}")
 endif()
-if(NOT actual STREQUAL expected)
+if(DEFINED NUMERIC_COMPARATOR)
+    execute_process(
+        COMMAND "${NUMERIC_COMPARATOR}" "${expected}" "${actual}"
+        RESULT_VARIABLE comparison_exit)
+    if(NOT comparison_exit STREQUAL "0")
+        message(FATAL_ERROR "numeric output differs from ${EXPECTED}")
+    endif()
+elseif(NOT actual STREQUAL expected)
     message(FATAL_ERROR
         "output differs from ${EXPECTED}\n--- expected\n${expected}\n--- actual\n${actual}")
 endif()

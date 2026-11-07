@@ -48,4 +48,4 @@ for (const [name, mod] of [["ESM", { create, MflError }], ["CommonJS", createReq
     s.free();
     console.log(name + ": ok");
 }
-process.exit(failures ? 1 : 0);
+process.exitCode = failures ? 1 : 0;

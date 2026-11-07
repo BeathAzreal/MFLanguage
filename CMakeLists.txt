@@ -287,6 +287,7 @@ if(MFL_BUILD_TESTS)
                 -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
                 -DEXPECTED_STDERR=${PROJECT_SOURCE_DIR}/tests/cmake/empty.txt
                 -DWORKDIR=${PROJECT_SOURCE_DIR}
+                ${ARGN}
                 -P ${PROJECT_SOURCE_DIR}/tests/cmake/compare_output.cmake)
     endfunction()
 
@@ -415,9 +416,16 @@ if(MFL_BUILD_TESTS)
         "center reaches 150 degC at the sample t = 90 s [|] previous sample: 80 s -> 146[.][0-9]+ degC\ncenter does not reach 600 degC within 600 s")
     mfl_add_run_test(run_bar_heated_end examples/thermal/bar_heated_end.mfl
         tests/language/run/bar_heated_end.expected)
-    # v0.4: welding thermal cycle (Rosenthal, EN 1011-2), named arguments.
+    # Libm rounding differs across platforms. Check numbers with 1e-12
+    # absolute + relative tolerance, while preserving all labels and units.
+    add_executable(compare_numeric_output tests/numerical/compare_numeric_output.c)
+    if(MFL_LIBM)
+        target_link_libraries(compare_numeric_output PRIVATE ${MFL_LIBM})
+    endif()
+    mfl_set_warnings(compare_numeric_output)
     mfl_add_run_test(run_thermal_cycle examples/welding/thermal_cycle.mfl
-        tests/language/run/thermal_cycle.expected)
+        tests/language/run/thermal_cycle.expected
+        -DNUMERIC_COMPARATOR=$<TARGET_FILE:compare_numeric_output>)
     # Physical model of the virtual calorimetry lab (examples/lab).
     mfl_add_run_test(run_lab_model examples/lab/check_model.mfl tests/language/run/lab_model.expected)
 
