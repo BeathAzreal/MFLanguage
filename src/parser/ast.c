@@ -74,6 +74,10 @@ void mfl_ast_print_expr(const MflExpr *e, MflWriteFn w, void *ctx)
         mfl_ast_print_expr(e->as.call.callee, w, ctx);
         for (arg = e->as.call.args; arg != NULL; arg = arg->next) {
             put(w, ctx, " ");
+            if (arg->label.length > 0) {
+                w(ctx, arg->label.start, arg->label.length);
+                put(w, ctx, ": ");
+            }
             mfl_ast_print_expr(arg, w, ctx);
         }
         put(w, ctx, ")");

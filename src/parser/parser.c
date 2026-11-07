@@ -516,13 +516,32 @@ static MflExpr *parse_postfix(Parser *p)
             int argc = 0;
             advance(p);
             if (!check(p, MFL_TOK_RPAREN)) {
+                int named = 0;
                 do {
                     MflExpr *arg;
+                    MflToken label;
+                    int has_label = 0;
                     if (!enter(p)) {
+                        return error_expr(p);
+                    }
+                    /* name: value (v0.4) */
+                    if (check(p, MFL_TOK_IDENT) && peek_kind(p, 1) == MFL_TOK_COLON) {
+                        label = p->cur;
+                        has_label = 1;
+                        advance(p);
+                        advance(p);
+                        named = 1;
+                    } else if (named) {
+                        error_at(p, &p->cur, "a positional argument cannot follow a named one "
+                                             "(write the positional arguments first)");
+                        leave(p);
                         return error_expr(p);
                     }
                     arg = parse_expr(p);
                     leave(p);
+                    if (has_label && arg != &p->oom_expr) {
+                        arg->label = text_of(&label);
+                    }
                     if (last == NULL) {
                         first = arg;
                     } else {

@@ -62,7 +62,7 @@ typedef enum {
 #define MFL_NF_NO_AFFINE 1u /* elements of argument 1 may not be absolute temperatures */
 #define MFL_NF_EVEN_DIM 2u  /* argument 1 needs even dimension exponents (sqrt) */
 
-#define MFL_NATIVE_MAX_ARGS 4
+#define MFL_NATIVE_MAX_ARGS 10
 
 typedef struct MflNativeEnv MflNativeEnv;
 typedef struct MflNativeSession MflNativeSession;

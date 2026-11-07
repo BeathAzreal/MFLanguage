@@ -312,6 +312,15 @@ static void test_arrow_on_next_line(void)
     EXPECT_DIAGS("let a = 1\n-> 2", "2:1: expected expression, found '->'\n");
 }
 
+/* v0.4: named arguments. */
+static void test_named_args(void)
+{
+    EXPECT_EXPR("f(1, b: 2, c: x + 1)", "(call f 1 b: 2 c: (+ x 1))");
+    EXPECT_EXPR("m.f(speed: 5 mm/s)", "(call (. m f) speed: (quantity 5 (/ mm s)))");
+    EXPECT_DIAGS("f(a: 1, 2)", "1:9: a positional argument cannot follow a named one (write the "
+                               "positional arguments first)\n");
+}
+
 static void test_imports(void)
 {
     EXPECT_AST("import numerical\nimport \"lib/steel.mfl\"\n# comment\nimport math\nlet a = 1",
@@ -565,6 +574,7 @@ int main(void)
     test_v02_errors();
     test_imports();
     test_unit_groups();
+    test_named_args();
     test_arrow_on_next_line();
     test_recovery();
     test_positions();
