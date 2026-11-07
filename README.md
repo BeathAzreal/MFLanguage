@@ -10,7 +10,7 @@ that students, researchers and engineers can write mathematical models, test
 hypotheses and run reproducible simulations — for undergraduate research
 (IC), final-year projects (TCC), graduate work and industrial applications.
 
-> ⚠️ **Early stage (pre-alpha, v0.4).** The interpreter runs functions,
+> ⚠️ **Early stage (pre-alpha, v0.4.1).** The interpreter runs functions,
 > control flow, arrays and gradually typed code with physical units,
 > dimensional analysis, absolute temperatures and unit conversion; it has
 > modules (`import`), a `numerical` module and a verified **1D transient
@@ -288,6 +288,7 @@ Run a program:
 ```bash
 ./build/mfl examples/welding/heat_input.mfl       # prints: 480 J/mm
 ./build/mfl examples/thermal/steel_properties.mfl
+./build/mfl examples/thermal/bar_cooling_convection.mfl   # v0.4.1
 ./build/mfl examples/welding/heat_input_v02.mfl   # v0.2 demonstration
 ./build/mfl examples/thermal/bar_heated_end.mfl --csv out/bar_heated_end.csv   # v0.3
 ```
@@ -311,8 +312,9 @@ Inspect the stages: `--tokens` (lexer), `--ast` (parser), `--types`
 | **v0.1 — core** ✅ | Lexer, parser, AST, bytecode compiler, VM; numbers, strings, `let`, arithmetic, `print`; SI units with dimension checking and `.to()`; heat-input conformance test passing; C embedding API |
 | **v0.2** ✅ | Functions, control flow, arrays, gradual type annotations, absolute temperatures, error messages with source locations at compile and run time |
 | **v0.3** ✅ | `import`; `numerical` module; 1D transient heat conduction (explicit FD) verified against the analytical solution; CSV/JSON export; C API for simulations; packages; WebAssembly build |
-| **v0.4** ✅ (this release) | Named arguments; `welding` module (EN 1011-1/-2, Rosenthal fields, t8/5, peak temperatures, HAZ width) with verification; in-memory sources and the `mfl-wasm` web package for applications |
-| **v0.4.x** | Implicit schemes (backward Euler, Crank–Nicolson), convection boundaries, ODE integrators; experiment records (parameters, units, method, results) |
+| **v0.4** ✅ | Named arguments; `welding` module (EN 1011-1/-2, Rosenthal fields, t8/5, peak temperatures, HAZ width) with verification; in-memory sources and the `mfl-wasm` web package for applications |
+| **v0.4.1** ✅ | Backward Euler and convective end boundaries; cooling-bar verification through CLI, C API and web package |
+| **v0.4.x** | Crank–Nicolson, ODE integrators; experiment records (parameters, units, method, results) |
 | **v0.5** | 2D/3D moving heat sources, Goldak model, experimental comparison |
 | **later** | C/C++/Fortran library bindings, game integration |
 
@@ -343,7 +345,7 @@ materials, welding, manufacturing and numerical methods.
 - ✅ C embedding API (`include/mfl/mfl.h`, `docs/embedding.md`), usable from C and C++, with run-time errors and an instruction limit
 - ✅ Conformance tests: `480 J/mm` (v0.1) and the v0.2 acceptance demonstration
 - ✅ Modules: `import "file.mfl"` (each file once, cycles and missing files reported) and C modules `math`, `numerical`, `heat`, `welding`
-- ✅ 1D transient heat conduction: FTCS with stability check, CSV/JSON export (atomic, with completion marker), same solver from MFL, the CLI and C
+- ✅ 1D transient heat conduction: FTCS with stability check, backward Euler, convective end boundaries, CSV/JSON export (atomic, with completion marker), same solver from MFL, the CLI and C
 - ✅ CI on Linux (GCC, Clang), macOS, Windows with warnings as errors; ASan + UBSan; packages with a smoke test
 - ⏳ `break`/`continue`, closures, a garbage collector for arrays
 - ✅ Named arguments; `welding` module with analytical thermal models (Rosenthal, EN 1011-1/-2), verified (`docs/welding.md`)

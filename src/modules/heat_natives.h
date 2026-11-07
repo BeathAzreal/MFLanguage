@@ -15,7 +15,7 @@
     X(bar) X(nodes) X(mesh) X(initial_temperature) X(initial_profile) X(left_temperature)        \
     X(right_temperature) X(left_insulated) X(right_insulated) X(time_step) X(end_time)           \
     X(sample_every) X(max_time_step) X(run) X(sample_count) X(times) X(positions) X(profile)     \
-    X(final_profile) X(temperature) X(first_time_reaching)
+    X(final_profile) X(temperature) X(first_time_reaching) X(method) X(left_convection) X(right_convection)
 
 #define MFL_HEAT_DECLARE_(name) int mfl_heat_##name(MflNativeEnv *env, const MflValue *a, MflValue *r);
 MFL_HEAT_NATIVE_FNS(MFL_HEAT_DECLARE_)

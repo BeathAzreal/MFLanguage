@@ -267,6 +267,49 @@ int mfl_heat_right_insulated(MflNativeEnv *env, const MflValue *a, MflValue *r)
     return boundary(env, MFL_H1_RIGHT, NULL, r);
 }
 
+int mfl_heat_method(MflNativeEnv *env, const MflValue *a, MflValue *r)
+{
+    char name[64];
+    char msg[MSG];
+    MflH1Method method;
+    int rc;
+    if (session(env) == NULL) {
+        return 1;
+    }
+    mfl_native_string(&a[0], name, sizeof name);
+    if (strcmp(name, "ftcs") == 0) {
+        method = MFL_H1_FTCS;
+    } else if (strcmp(name, "backward_euler") == 0) {
+        method = MFL_H1_BACKWARD_EULER;
+    } else {
+        return mfl_native_fail(env, "heat.method: use ftcs or backward_euler");
+    }
+    rc = report(env, mfl_h1_set_method(&env->session->config, method, msg, sizeof msg), msg);
+    return rc != 0 ? rc : nil_result(r);
+}
+
+static int convection(MflNativeEnv *env, MflH1Side side, const MflValue *a, MflValue *r)
+{
+    char msg[MSG];
+    int rc;
+    if (session(env) == NULL) {
+        return 1;
+    }
+    rc = report(env, mfl_h1_set_convection(&env->session->config, side,
+                    mfl_native_si(env, &a[0]), mfl_native_si(env, &a[1]), msg, sizeof msg), msg);
+    return rc != 0 ? rc : nil_result(r);
+}
+
+int mfl_heat_left_convection(MflNativeEnv *env, const MflValue *a, MflValue *r)
+{
+    return convection(env, MFL_H1_LEFT, a, r);
+}
+
+int mfl_heat_right_convection(MflNativeEnv *env, const MflValue *a, MflValue *r)
+{
+    return convection(env, MFL_H1_RIGHT, a, r);
+}
+
 int mfl_heat_time_step(MflNativeEnv *env, const MflValue *a, MflValue *r)
 {
     int rc;

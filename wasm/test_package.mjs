@@ -45,6 +45,13 @@ for (const [name, mod] of [["ESM", { create, MflError }], ["CommonJS", createReq
     try { s.compile("game/loop.mfl").run({ maxSteps: 10000 }); } catch (e) { err = e; }
     check(err && err.status === "MFL_ERR_RUNTIME" && err.message.includes("instruction limit"), name + ": instruction limit");
     model.free();
+    s.addSource("cooling.mfl", readFileSync(new URL("../examples/thermal/bar_cooling_convection.mfl", import.meta.url), "utf8"));
+    const cooling = s.compile("cooling.mfl");
+    cooling.run();
+    check(Math.abs(s.getNumber("center", "K") - 273.15 - 384.39700827945603) < 0.3, name + ": implicit cooling analytical center");
+    check(Math.abs(s.getNumber("surface", "K") - 273.15 - 362.75788546897456) < 0.3, name + ": implicit cooling analytical surface");
+    check(s.heat1d()?.samples === 61, name + ": implicit cooling state results");
+    cooling.free();
     s.free();
     console.log(name + ": ok");
 }

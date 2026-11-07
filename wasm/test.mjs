@@ -35,6 +35,9 @@ let passed = 0;
 const failures = [];
 
 function check(name, path, stdout, stderr, status) {
+    // Match the native CTest harness on Windows checkouts with autocrlf.
+    if (stdout !== null) stdout = stdout.replace(/\r\n/g, "\n");
+    if (stderr !== null) stderr = stderr.replace(/\r\n/g, "\n");
     const r = mfl.run(path, { maxSteps: 50_000_000 });
     const problems = [];
     if (r.status !== status) problems.push(`status ${r.status}, expected ${status}`);
@@ -112,6 +115,46 @@ for (const [base, status] of [["ok", 0], ["missing", 1], ["cycle", 1], ["visibil
     console.log(`sine case: max |T - analytical| = ${worst.toExponential(3)} K`);
 }
 
+// Cooling plane wall: analytical series at t=600 s (Bi=0.125), and the
+// discrete backward-Euler boundary energy balance at every stored step.
+{
+    const r = check("bar cooling", "examples/thermal/bar_cooling_convection.mfl", null, "", 0);
+    const s = r.simulation;
+    if (!s || s.nodes !== 41 || s.samples !== 61) {
+        failures.push("bar cooling: missing simulation or wrong shape");
+    } else {
+        const metadata = JSON.parse(s.metadata);
+        const center = s.at(60, 20) - 273.15, surface = s.at(60, 0) - 273.15;
+        if (Math.abs(center - 384.39700827945603) > 0.3 ||
+            Math.abs(surface - 362.75788546897456) > 0.3) {
+            failures.push("bar cooling: analytical error exceeds 0.3 K");
+        } else passed++;
+        if (!metadata.method.includes("backward Euler") ||
+            metadata.boundaries.left.kind !== "convection" ||
+            metadata.boundaries.left.coefficient !== 100 ||
+            metadata.boundaries.right.ambient_temperature !== 293.15 ||
+            metadata.discretization.max_stable_time_step !== null ||
+            !(metadata.discretization.ftcs_time_step_limit < 10)) {
+            failures.push("bar cooling: method or convection metadata differs");
+        } else passed++;
+        let energyError = 0;
+        for (let i = 1; i < s.samples; i++) {
+            let change = 0;
+            for (let j = 0; j < s.nodes; j++) {
+                const weight = j === 0 || j === s.nodes - 1 ? 0.5 : 1;
+                change += weight * (s.at(i, j) - s.at(i - 1, j));
+            }
+            change *= (0.1 / 40) * 7800 * 500;
+            const loss = (s.times[i] - s.times[i - 1]) *
+                100 * (s.at(i, 0) + s.at(i, 40) - 2 * 293.15);
+            energyError = Math.max(energyError, Math.abs(change + loss) / Math.abs(loss));
+        }
+        if (energyError > 1e-9) failures.push("bar cooling: boundary energy imbalance");
+        else passed++;
+        console.log(`cooling: center ${center} degC, surface ${surface} degC, energy residual ${energyError}`);
+    }
+}
+
 // An endless loop stops at the instruction limit instead of hanging.
 {
     mfl.addFile("tmp/loop.mfl", "var i = 0\nwhile true { i = i + 1 }\n");
@@ -122,4 +165,4 @@ for (const [base, status] of [["ok", 0], ["missing", 1], ["cycle", 1], ["visibil
 
 console.log(`MFL ${mfl.version} (WebAssembly): ${passed} passed, ${failures.length} failed`);
 for (const f of failures) console.error("FAIL " + f + "\n");
-process.exit(failures.length ? 1 : 0);
+process.exitCode = failures.length ? 1 : 0;

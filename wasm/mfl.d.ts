@@ -69,7 +69,7 @@ export interface RunResult {
 }
 
 export interface Mfl {
-    /** Library version, e.g. "0.4.0-dev". */
+    /** Library version, e.g. "0.4.1-dev". */
     readonly version: string;
     /** A new independent state (several may coexist). */
     createState(options?: { onPrint?: (text: string) => void }): MflState;

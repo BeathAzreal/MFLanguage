@@ -1,5 +1,5 @@
 /*
- * heat1d.c - explicit (FTCS) 1D heat conduction. See heat1d.h and
+ * heat1d.c - FTCS and backward Euler 1D heat conduction. See heat1d.h and
  * docs/heat-conduction.md.
  *
  * Mesh: nodes x_j = j dx, j = 0 .. N-1, dx = L / (N - 1) (x_{N-1} = L).
@@ -283,7 +283,42 @@ MflH1Status mfl_h1_set_boundary(MflH1Config *c, MflH1Side side, MflH1Boundary ki
         return fail(msg, msg_size, MFL_H1_INVALID, "invalid boundary condition kind");
     }
     c->boundary[side] = kind;
+    c->boundary_coefficient[side] = 0;
     c->set |= 1u << p;
+    return MFL_H1_OK;
+}
+
+MflH1Status mfl_h1_set_method(MflH1Config *c, MflH1Method method, char *msg, size_t msg_size)
+{
+    if (method != MFL_H1_FTCS && method != MFL_H1_BACKWARD_EULER) {
+        return fail(msg, msg_size, MFL_H1_INVALID, "method must be ftcs or backward_euler");
+    }
+    c->method = method;
+    return MFL_H1_OK;
+}
+
+MflH1Status mfl_h1_set_convection(MflH1Config *c, MflH1Side side, double coefficient,
+                                  double ambient_kelvin, char *msg, size_t msg_size)
+{
+    MflH1Param p;
+    MflH1Status st;
+    if (side != MFL_H1_LEFT && side != MFL_H1_RIGHT) {
+        return fail(msg, msg_size, MFL_H1_INVALID, "invalid side (use left or right)");
+    }
+    if (!isfinite(coefficient) || coefficient < 0) {
+        return fail(msg, msg_size, MFL_H1_INVALID,
+                    "convection coefficient must be finite and nonnegative, in W/(m^2*K)");
+    }
+    st = check_kelvin("convection ambient temperature", ambient_kelvin, NULL, msg, msg_size);
+    if (st != MFL_H1_OK) {
+        return st;
+    }
+    p = side == MFL_H1_LEFT ? MFL_H1_P_LEFT : MFL_H1_P_RIGHT;
+    c->boundary[side] = MFL_H1_BC_CONVECTION;
+    c->boundary_temperature[side] = ambient_kelvin;
+    c->boundary_coefficient[side] = coefficient;
+    c->set |= 1u << p;
+    snprintf(c->given[p], MFL_H1_GIVEN, "convection (SI values in boundaries)");
     return MFL_H1_OK;
 }
 
@@ -329,6 +364,15 @@ MflH1Status mfl_h1_max_time_step(const MflH1Config *c, double *dt_max, char *msg
     dx = c->length / (double)(n - 1);
     alpha = c->conductivity / (c->density * c->specific_heat);
     *dt_max = dx * dx / (2.0 * alpha);
+    for (i = 0; i < 2; i++) {
+        if (c->boundary[i] == MFL_H1_BC_CONVECTION) {
+            double limit = dx * dx / (2.0 * alpha *
+                (1.0 + c->boundary_coefficient[i] * dx / c->conductivity));
+            if (limit < *dt_max) {
+                *dt_max = limit;
+            }
+        }
+    }
     if (!isfinite(*dt_max) || !(*dt_max > 0)) {
         return fail(msg, msg_size, MFL_H1_INVALID,
                     "the stability limit dx^2 / (2 alpha) = %s s is not a positive finite number "
@@ -374,6 +418,63 @@ static void step(const MflH1Config *c, size_t n, double fo, const double *u, dou
     v[n - 1] = c->boundary[MFL_H1_RIGHT] == MFL_H1_BC_TEMPERATURE
                    ? c->boundary_temperature[MFL_H1_RIGHT]
                    : u[n - 1] + 2.0 * fo * (u[n - 2] - u[n - 1]);
+    for (j = 0; j < 2; j++) {
+        if (c->boundary[j] == MFL_H1_BC_CONVECTION) {
+            size_t end = j == 0 ? 0 : n - 1;
+            double bi = c->boundary_coefficient[j] * c->length /
+                        ((double)(n - 1) * c->conductivity);
+            v[end] += 2.0 * fo * bi * (c->boundary_temperature[j] - u[end]);
+        }
+    }
+}
+
+/* Backward Euler, solved by Thomas elimination in O(nodes) storage/time.
+ * End control volumes have width dx/2. Outward convection has the same
+ * sign at both ends, and is evaluated at the new time for energy balance. */
+static int implicit_step(const MflH1Config *c, size_t n, double fo,
+                         const double *u, double *v, double *upper)
+{
+    size_t j;
+    double dx = c->length / (double)(n - 1);
+    for (j = 0; j < n; j++) {
+        double lower = -fo;
+        double diagonal = 1.0 + 2.0 * fo;
+        double right = -fo;
+        double rhs = u[j];
+        if (j == 0 || j == n - 1) {
+            size_t side = j == 0 ? 0 : 1;
+            if (c->boundary[side] == MFL_H1_BC_TEMPERATURE) {
+                lower = right = 0;
+                diagonal = 1;
+                rhs = c->boundary_temperature[side];
+            } else {
+                double bi = c->boundary[side] == MFL_H1_BC_CONVECTION
+                    ? c->boundary_coefficient[side] * dx / c->conductivity : 0;
+                lower = j == 0 ? 0 : -2.0 * fo;
+                right = j == 0 ? -2.0 * fo : 0;
+                diagonal += 2.0 * fo * bi;
+                rhs += 2.0 * fo * bi * c->boundary_temperature[side];
+            }
+        }
+        if (j > 0) {
+            diagonal -= lower * upper[j - 1];
+            rhs -= lower * v[j - 1];
+        }
+        if (!isfinite(diagonal) || !(diagonal > 0) || !isfinite(rhs)) {
+            return 0;
+        }
+        upper[j] = right / diagonal;
+        v[j] = rhs / diagonal;
+    }
+    for (j = n - 1; j > 0; j--) {
+        v[j - 1] -= upper[j - 1] * v[j];
+    }
+    for (j = 0; j < n; j++) {
+        if (!isfinite(v[j]) || !(v[j] > 0)) {
+            return 0;
+        }
+    }
+    return 1;
 }
 
 MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t msg_size)
@@ -396,10 +497,14 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
     double rem;
     double *u = NULL;
     double *v = NULL;
+    double *upper = NULL;
     MflH1Status st;
     unsigned i;
 
     memset(out, 0, sizeof *out);
+    if (c->method != MFL_H1_FTCS && c->method != MFL_H1_BACKWARD_EULER) {
+        return fail(msg, msg_size, MFL_H1_INVALID, "invalid heat integration method");
+    }
     for (i = 0; i < sizeof need / sizeof need[0]; i++) {
         if (!has(c, need[i])) {
             return missing(msg, msg_size, need[i]);
@@ -422,7 +527,17 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
     dx = c->length / (double)(n - 1);
     alpha = c->conductivity / (c->density * c->specific_heat);
     fo = alpha * c->time_step / (dx * dx);
-    if (!(c->time_step <= dt_max * (1.0 + MFL_H1_STABILITY_TOLERANCE))) {
+    if (!isfinite(fo) || !isfinite(1.0 + 2.0 * fo)) {
+        return fail(msg, msg_size, MFL_H1_INVALID, "non-finite Fourier number: reduce time_step");
+    }
+    if (c->method == MFL_H1_FTCS &&
+        !(c->time_step <= dt_max * (1.0 + MFL_H1_STABILITY_TOLERANCE))) {
+        if (c->boundary[0] == MFL_H1_BC_CONVECTION || c->boundary[1] == MFL_H1_BC_CONVECTION) {
+            return fail(msg, msg_size, MFL_H1_UNSTABLE,
+                        "unstable time step: convection requires FTCS time_step <= %s s "
+                        "(dx^2/(2 alpha (1 + h dx/k)) at each convective end)",
+                        NUM(dt_max));
+        }
         return fail(msg, msg_size, MFL_H1_UNSTABLE,
                     "unstable time step: time_step = %s s is above the stability limit of the "
                     "explicit scheme, time_step <= dx^2 / (2 alpha) = %s s (Fourier number "
@@ -467,6 +582,9 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
     if (c->memory_limit != 0) {
         double bytes = ((double)samples * (double)n + 2.0 * (double)samples + 3.0 * (double)n) *
                        (double)sizeof(double);
+        if (c->method == MFL_H1_BACKWARD_EULER) {
+            bytes += (double)n * sizeof(double);
+        }
         if (bytes > (double)c->memory_limit) {
             return fail(msg, msg_size, MFL_H1_NO_MEMORY,
                         "the results need %s bytes, above the memory limit of %s bytes; increase "
@@ -484,6 +602,12 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
     out->T = (double *)malloc(samples * n * sizeof(double));
     u = (double *)malloc(n * sizeof(double));
     v = (double *)malloc(n * sizeof(double));
+    if (c->method == MFL_H1_BACKWARD_EULER) {
+        upper = (double *)malloc(n * sizeof(double));
+        if (upper == NULL) {
+            goto oom;
+        }
+    }
     if (out->times == NULL || out->sample_step == NULL || out->positions == NULL ||
         out->T == NULL || u == NULL || v == NULL) {
         goto oom;
@@ -520,7 +644,19 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
         double *w;
         int last = k == steps;
         double f = last && rem > 0 ? alpha * rem / (dx * dx) : fo;
-        step(c, n, f, u, v);
+        if (c->method == MFL_H1_BACKWARD_EULER) {
+            if (!implicit_step(c, n, f, u, v, upper)) {
+                free(u);
+                free(v);
+                free(upper);
+                mfl_h1_result_free(out);
+                return fail(msg, msg_size, MFL_H1_INVALID,
+                            "backward_euler could not solve a finite positive temperature field; "
+                            "reduce time_step or check the properties");
+            }
+        } else {
+            step(c, n, f, u, v);
+        }
         w = u;
         u = v;
         v = w;
@@ -533,11 +669,13 @@ MflH1Status mfl_h1_run(const MflH1Config *c, MflH1Result *out, char *msg, size_t
     }
     free(u);
     free(v);
+    free(upper);
     return MFL_H1_OK;
 
 oom:
     free(u);
     free(v);
+    free(upper);
     mfl_h1_result_free(out);
     return fail(msg, msg_size, MFL_H1_NO_MEMORY, "out of memory for the simulation results");
 }
