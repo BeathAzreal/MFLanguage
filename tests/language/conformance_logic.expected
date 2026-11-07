@@ -1,0 +1,9 @@
+7 1024 0.5 512 -4 1 -1
+0.30000000000000004 0.3333333333333333 6.02e23 1.5e-5 1e16 1000000000000000
+inf -inf nan
+true true false true true
+false true false
+false
+1 s true
+tab:	"quoted" back\slash
+

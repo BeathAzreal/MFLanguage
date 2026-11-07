@@ -1,0 +1,8 @@
+# v0.3: module calls checked when they run (values of type Any).
+import numerical
+fn mean_of(v) { return numerical.mean(v) }
+fn points(n) { return numerical.linspace(0 mm, 10 mm, n) }
+print(points(3))
+print(mean_of([1 s, 3 s]))
+var empty = []
+print(numerical.sum(empty))

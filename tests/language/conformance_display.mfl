@@ -1,0 +1,9 @@
+# Conformance: how quantities are displayed (docs/units.md section 4).
+print(0.1 mm, 5 mm/s, 45 W/(m*K), 7850 kg/m^3)   # literal units as written
+print(1 mm + 2 mm, (7 s) % (2 s), -(3 V))           # same unit: kept
+print(1 m + 1 mm, 2 * (5 mm), (10 m) / (2 s))       # mixed: coherent SI
+print(0.8 * 20 V * 150 A, (2 mA) * (3 kohm))        # SI symbol when unique
+print((2 m) * (3 m), (1 m) / (1 mm))                # base form; dimensionless
+print((1 km).to(m), (90 km/h).to(m/s), (1 g/cm^3).to(kg/m^3))
+print((15 L/min).to(m^3/s), (1 bar).to(kPa), (1 h).to(min))
+print((1 kJ/mm).value_in(J/m), (0.1 mm).to(mm))

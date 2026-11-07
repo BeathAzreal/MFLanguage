@@ -1,0 +1,64 @@
+{
+  "format": "mfl-heat1d-metadata",
+  "format_version": 1,
+  "mfl_version": "0.4.0-dev",
+  "model": "transient heat conduction in a homogeneous 1D bar with constant properties: rho*cp*dT/dt = k*d2T/dx2, alpha = k/(rho*cp)",
+  "method": "explicit finite differences (FTCS) on a uniform mesh; insulated ends by a mirror node; stable for Fourier number alpha*dt/dx^2 <= 1/2",
+  "scope": "verification of a 1D bar model; moving heat sources and 2D/3D welding simulation are outside this version",
+  "units": {"time": "s", "position": "m", "temperature": "K", "length": "m", "conductivity": "W/(m*K)", "density": "kg/m^3", "specific_heat": "J/(kg*K)", "diffusivity": "m^2/s", "temperatures_are": "absolute"},
+  "properties": {
+    "length": 0.02,
+    "conductivity": 45,
+    "density": 7850,
+    "specific_heat": 460,
+    "diffusivity": 1.2461921905289394e-5
+  },
+  "as_given": {
+    "length": "20 mm",
+    "conductivity": "45 W/(m*K)",
+    "density": "7850 kg/m^3",
+    "specific_heat": "460 J/(kg*K)",
+    "nodes": "5",
+    "initial": "20 degC",
+    "left": "100 degC",
+    "right": "insulated",
+    "time_step": "0.5 s",
+    "end_time": "2.25 s"
+  },
+  "initial_condition": {"kind": "uniform", "temperature": 293.15},
+  "boundaries": {
+    "left": {"kind": "temperature", "temperature": 373.15, "position": 0},
+    "right": {"kind": "insulated", "position": 0.02},
+    "at_initial_time": "a prescribed temperature replaces the initial value of its end node at t = 0"
+  },
+  "discretization": {
+    "nodes": 5,
+    "dx": 0.005,
+    "time_step": 0.5,
+    "end_time": 2.25,
+    "steps": 5,
+    "last_step": 0.25,
+    "fourier_number": 0.24923843810578786,
+    "max_stable_time_step": 1.0030555555555556,
+    "end_time_rule": "full steps of time_step, then one shorter step ending exactly at end_time when it falls between steps"
+  },
+  "sampling": {
+    "every_steps": 1,
+    "samples": 6,
+    "rule": "the initial state, every n-th step and always the final state"
+  },
+  "csv": {
+    "file": "small_bar.csv",
+    "columns": ["time_s", "position_m", "temperature_K"],
+    "order": "by time, then by position",
+    "rows": 30,
+    "bytes": 642,
+    "fnv1a64": "e6a48e79326292f9"
+  },
+  "sources": [
+    {"file": "examples/thermal/small_bar.mfl", "fnv1a64": "32ab85eddd06aa7d"},
+    {"file": "examples/thermal/materials/carbon_steel.mfl", "fnv1a64": "f9823069f625b7df"}
+  ],
+  "completeness": "this file is written last, after the CSV is complete; an export without it is incomplete",
+  "export_complete": true
+}

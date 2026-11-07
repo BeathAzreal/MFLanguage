@@ -1,0 +1,10 @@
+# v0.4: the welding module checks dimensions and temperature kinds before running.
+import welding
+let a = welding.heat_input(voltage: 25 A, current: 250 A, speed: 5 mm/s, efficiency: 0.8)
+let b = welding.efficiency(0.8)
+let c = welding.t85_thick(heat_input: 1 kJ/mm, conductivity: 30 W/(m*K), preheat: 20 delta_degC)
+let d = welding.peak_thick(power: 5 kW, speed: 5 mm/s, conductivity: 30 W/(m*K),
+                           density: 7850 kg/m^3, specific_heat: 640 J/(kg*K), preheat: 20 degC)
+let e = welding.t85_thin(heat_input: 1 kJ/mm, thickness: 10 mm, conductivity: 30 W/(m*K),
+                         density: 7850 kg/m^3, specific_heat: 640 J/(kg*K), preheat: 20 degC,
+                         speed: 5 mm/s)

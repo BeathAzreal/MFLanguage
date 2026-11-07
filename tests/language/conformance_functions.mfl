@@ -1,0 +1,64 @@
+# Conformance (v0.2): functions, parameters, locals, return, scope.
+
+# Called before its declaration: functions are hoisted.
+print(area(2 m))
+
+fn area(r: Quantity[m]) -> Quantity[m^2] {
+    let pi = 3.141592653589793
+    return pi * r^2
+}
+
+# Recursion.
+fn factorial(n: Number) -> Number {
+    if n <= 1 {
+        return 1
+    }
+    return n * factorial(n - 1)
+}
+print(factorial(10))
+
+# Mutual recursion.
+fn is_even(n) {
+    if n == 0 { return true }
+    return is_odd(n - 1)
+}
+fn is_odd(n) {
+    if n == 0 { return false }
+    return is_even(n - 1)
+}
+print(is_even(10), is_odd(7), is_even(3))
+
+# Unannotated parameters accept any type; the result follows the argument.
+fn twice(x) { return x + x }
+print(twice(3), twice(2 mm), twice(1.5 kJ/mm))
+
+# No return value: the call gives nil.
+fn shout(msg) { print(msg, "!") }
+print(shout("hello"))
+
+# Functions are values: they can be stored and passed.
+fn apply(f, x) { return f(x) }
+let g = twice
+print(apply(g, 4 s), apply(factorial, 5))
+print(twice)
+
+# Parameters and locals may shadow globals; globals are visible in bodies.
+let speed = 99 m/s
+let scale = 2
+fn rescale(speed: Quantity[mm/s]) -> Quantity[mm/s] {
+    let factor = scale
+    return speed * factor
+}
+print(rescale(5 mm/s).to(mm/s), speed)
+
+# Locals are separate on every call.
+fn countdown(n) {
+    var k = n
+    var steps = 0
+    while k > 0 {
+        k = k - 1
+        steps = steps + 1
+    }
+    return steps
+}
+print(countdown(3), countdown(5))

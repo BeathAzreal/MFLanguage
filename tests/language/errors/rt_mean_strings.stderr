@@ -1,0 +1,1 @@
+tests/language/errors/rt_mean_strings.mfl:2:24: runtime error: argument 1 of 'numerical.mean' ('values') must be an array of numbers, found Array[String]

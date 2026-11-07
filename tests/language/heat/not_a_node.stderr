@@ -1,0 +1,1 @@
+tests/language/heat/not_a_node.mfl:11:7: runtime error: heat.temperature: position 15 mm is not a node of the mesh (nodes every 0.01 m from 0 to 0.1 m); results exist only at the nodes

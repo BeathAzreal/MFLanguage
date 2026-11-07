@@ -1,0 +1,5 @@
+# v0.4: values checked when the welding functions run.
+import welding
+print(welding.efficiency("MAG"), welding.efficiency("tig"))
+print(welding.t85_thick(heat_input: 1 kJ/mm, conductivity: 30 W/(m*K), preheat: 150 degC))
+print(welding.efficiency("laser"))

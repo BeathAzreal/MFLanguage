@@ -10,6 +10,8 @@ permissions:
   contents: read
 
 jobs:
+  # Full test suite with warnings as errors on every platform, then a binary
+  # package (executable, examples, header, libraries, instructions).
   build:
     name: ${{ matrix.os }} / ${{ matrix.compiler }}
     runs-on: ${{ matrix.os }}
@@ -19,12 +21,16 @@ jobs:
         include:
           - os: ubuntu-latest
             compiler: gcc
+            package: linux-x64
           - os: ubuntu-latest
             compiler: clang
+            package: ""
           - os: macos-latest
             compiler: clang
+            package: macos-arm64
           - os: windows-latest
             compiler: msvc
+            package: windows-x64
     steps:
       - uses: actions/checkout@v4
 
@@ -44,3 +50,145 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --build-config Release --output-on-failure
+
+      - name: Mesh refinement table (verification against the analytical solution)
+        if: matrix.package != ''
+        shell: bash
+        run: |
+          exe=build/test_heat1d
+          [ -f build/Release/test_heat1d.exe ] && exe=build/Release/test_heat1d.exe
+          "$exe" --table
+
+      - name: Package
+        if: matrix.package != ''
+        shell: bash
+        run: |
+          name="mfl-$(grep -m1 'MFL_VERSION_STRING' include/mfl/mfl.h | cut -d'"' -f2)-${{ matrix.package }}"
+          cmake --install build --config Release --prefix "pkg/$name"
+          cd pkg
+          if [ "${{ matrix.compiler }}" = "msvc" ]; then
+            cmake -E tar cf "$name.zip" --format=zip "$name"
+          else
+            cmake -E tar czf "$name.tar.gz" "$name"
+          fi
+          ls -l
+          echo "PKG_NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Upload package
+        if: matrix.package != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PKG_NAME }}
+          path: |
+            pkg/*.zip
+            pkg/*.tar.gz
+          if-no-files-found: error
+
+  # Smoke test on the extracted package, on a clean checkout-free runner
+  # directory: run the CLI and produce the CSV and its metadata.
+  package-smoke:
+    name: package smoke test / ${{ matrix.package }}
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            package: linux-x64
+          - os: macos-latest
+            package: macos-arm64
+          - os: windows-latest
+            package: windows-x64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: mfl-*-${{ matrix.package }}
+          merge-multiple: true
+          path: dist
+
+      - name: Extract, run the CLI, export the CSV
+        shell: bash
+        run: |
+          set -eu
+          mkdir smoke && cd smoke
+          archive=$(ls ../dist/*)
+          cmake -E tar xf "$archive"
+          cd mfl-*
+          ls -R bin examples/thermal | head -40
+          ./bin/mfl --version
+          ./bin/mfl examples/welding/heat_input.mfl | tee out.txt
+          grep -q "480 J/mm" out.txt
+          ./bin/mfl examples/thermal/bar_heated_end.mfl --csv out/bar_heated_end.csv 2>&1 \
+            || { echo "expected failure: out/ does not exist yet"; }
+          mkdir -p out
+          ./bin/mfl examples/thermal/bar_heated_end.mfl --csv out/bar_heated_end.csv
+          test -f out/bar_heated_end.json
+          head -3 out/bar_heated_end.csv
+          rows=$(wc -l < out/bar_heated_end.csv | tr -d ' ')
+          echo "CSV lines: $rows"
+          test "$rows" = "1282"   # header + 61 samples x 21 nodes
+          grep -q '"export_complete": true' out/bar_heated_end.json
+          ./bin/mfl_heat_host examples/thermal/bar_heated_end.mfl out/bar_heated_end.csv
+
+  # MFL in the browser: WebAssembly build (Zig's clang + WASI libc), checked
+  # in Node against the same golden files as the native CLI.
+  wasm:
+    name: WebAssembly (browser build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Zig (clang with a WASI libc)
+        run: python3 -m pip install ziglang==0.15.1
+      - name: Build
+        run: wasm/build.sh
+      - name: Golden tests on the WebAssembly build
+        run: node wasm/test.mjs
+      - name: npm package (ESM, CommonJS, state API, TypeScript types)
+        run: |
+          python3 wasm/package.py
+          node wasm/test_package.mjs
+          wasm/check_types.sh
+      - name: Upload the browser build
+        uses: actions/upload-artifact@v4
+        with:
+          name: mfl-wasm
+          path: |
+            wasm/dist/npm/
+          if-no-files-found: error
+
+  # AddressSanitizer + UndefinedBehaviorSanitizer (and LeakSanitizer) over
+  # the whole suite: solver, API, error and out-of-memory paths.
+  sanitizers:
+    name: ubuntu-latest / gcc / ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_COMPILER=gcc
+          -DMFL_WARNINGS_AS_ERRORS=ON
+          "-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+          "-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-sanitize-recover=all"
+          "-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined"
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build --output-on-failure
+      - name: Programs whose tests check output only (exit status must be 0)
+        env:
+          ASAN_OPTIONS: detect_leaks=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          set -e
+          ./build/mfl examples/thermal/bar_heated_end.mfl > /dev/null
+          ./build/mfl examples/welding/heat_input_v02.mfl > /dev/null
+          ./build/mfl_heat_host examples/thermal/bar_heated_end.mfl build/export/bar_heated_end.csv > /dev/null
+          ./build/mfl_embed_example > /dev/null
+          ./build/test_heat1d --table

@@ -1,0 +1,3 @@
+import numerical
+fn mean_of(v) { return numerical.mean(v) }
+print(mean_of(["a"]))

@@ -1,0 +1,23 @@
+; globals 5, functions 0, constants 4, units 4, types 0
+; main: frame 0, max stack 3
+0000   10:15  CONST                 0  20 V
+0003   10:1   SET_GLOBAL            0  voltage
+0006   11:15  CONST                 1  150 A
+0009   11:1   SET_GLOBAL            1  current
+0012   12:13  CONST                 2  5 mm/s
+0015   12:1   SET_GLOBAL            2  speed
+0018   13:18  CONST                 3  0.8
+0021   13:1   SET_GLOBAL            3  efficiency
+0024   15:14  GET_GLOBAL            3  efficiency
+0027   15:27  GET_GLOBAL            0  voltage
+0030   15:25  MUL
+0031   15:37  GET_GLOBAL            1  current
+0034   15:35  MUL
+0035   15:47  GET_GLOBAL            2  speed
+0038   15:45  DIV
+0039   15:1   SET_GLOBAL            4  energy
+0042   17:7   GET_GLOBAL            4  energy
+0045   17:7   CONVERT               3  J/mm (x1000)
+0048   17:1   PRINT                 1
+0051   17:1   POP
+0052    0:0   HALT

@@ -1,0 +1,8 @@
+fn pick(i) {
+    if i == 0 { return 1 m }
+    return 1 s
+}
+var x = pick(0)
+x = pick(0)
+print(x)
+x = pick(1)

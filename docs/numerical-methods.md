@@ -1,7 +1,9 @@
 # Numerical Methods — Draft 0
 
-> **Status:** plan. No solver is implemented yet. The `numerical` module
-> will live in `modules/numerical/`, outside the language core.
+> **Status:** v0.3 implements the explicit 1D heat solver (FTCS), uniform
+> meshes, compensated sums and means in `modules/numerical/` — see
+> [`heat-conduction.md`](heat-conduction.md) for the model, the method, its
+> verification and its limits. The other methods below are plans.
 
 ## 1. Principles
 
@@ -29,7 +31,7 @@ Transient heat conduction with constant properties:
 | ODE | Explicit Euler | 1 | v0.3 |
 | ODE | Classical RK4 | 4 | v0.3 |
 | ODE | Adaptive RK45 (Dormand–Prince) | 4(5) | v0.3+ |
-| 1D heat | FTCS (explicit) | O(Δt, Δx²) | v0.3 |
+| 1D heat | FTCS (explicit) | O(Δt, Δx²) | **v0.3 — implemented** (observed order 2.00 at fixed Fo) |
 | 1D heat | Backward Euler (implicit) + Thomas algorithm | O(Δt, Δx²) | v0.3 |
 | 1D heat | Crank–Nicolson + Thomas algorithm | O(Δt², Δx²) | v0.3 |
 | 2D/3D heat | ADI / implicit with iterative solvers (CG, Gauss–Seidel) | 2 | v0.5 |
@@ -40,8 +42,9 @@ Transient heat conduction with constant properties:
 ### 3.1 Stability
 
 FTCS in 1D is stable only for the Fourier number
-`Fo = α Δt / Δx² ≤ 1/2`. The solver must **check and report** this limit
-rather than silently diverge.
+`Fo = α Δt / Δx² ≤ 1/2`. **Implemented:** the solver checks the limit
+before running (equality accepted, relative tolerance 1e‑12) and reports
+the requested and the maximum time step (`heat-conduction.md` §4).
 
 ### 3.2 Boundary conditions
 

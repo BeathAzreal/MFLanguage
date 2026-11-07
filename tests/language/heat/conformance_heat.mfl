@@ -1,0 +1,53 @@
+# v0.3: the heat module from the language (small cases, exact checks).
+import heat
+import numerical
+
+# Bar of 4 cm, 5 nodes (dx = 1 cm); insulated at both ends, uniform 300 K:
+# stays exactly uniform.
+heat.bar(4 cm, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.nodes(5)
+heat.initial_temperature(300 K)
+heat.left_insulated()
+heat.right_insulated()
+heat.time_step(1 s)
+heat.end_time(3.5 s)               # between steps: 3 steps of 1 s and one of 0.5 s
+heat.run()
+print(heat.sample_count(), heat.times())
+print(heat.positions())
+print(heat.final_profile())
+
+# The same bar with a nodal profile, hot left end: equivalent units give the
+# same numbers (40 mm / 0.04 m, 20 degC / 293.15 K, 2 min / 120 s).
+heat.bar(40 mm, 45 W/(m*K), 7.85 g/cm^3, 0.46 kJ/(kg*K))
+heat.mesh(numerical.linspace(0 m, 0.04 m, 5))
+heat.initial_profile([293.15 K, 293.15 K, 293.15 K, 293.15 K, 293.15 K])
+heat.left_temperature(100 degC)
+heat.right_temperature(20 degC)
+heat.time_step(2 s)
+heat.end_time(2 min)
+heat.sample_every(15)
+heat.run()
+let a = heat.final_profile()
+print(heat.sample_count(), heat.times())
+heat.bar(0.04 m, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.nodes(5)
+heat.initial_temperature(20 degC)
+heat.left_temperature(373.15 K)
+heat.right_temperature(293.15 K)
+heat.time_step(2 s)
+heat.end_time(120 s)
+heat.run()
+let b = heat.final_profile()
+var same = true
+for i in 0..len(a) {
+    if a[i] != b[i] { same = false }
+}
+print("equivalent units give identical results:", same)
+print(a)
+
+# Results by position and time; thresholds inside and outside the range.
+print(heat.temperature(20 mm, 60 s), heat.temperature(0.02 m, 1 min).to(degC))
+print(heat.first_time_reaching(10 mm, 40 degC), heat.first_time_reaching(10 mm, 200 degC))
+print(heat.first_time_reaching(0 mm, 100 degC))   # prescribed from t = 0
+print(heat.profile(0))
+print(heat.max_time_step())

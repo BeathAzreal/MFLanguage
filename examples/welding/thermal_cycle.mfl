@@ -1,0 +1,53 @@
+# Thermal cycle of a MAG pass on a steel plate (Rosenthal and EN 1011-2).
+#
+#   mfl examples/welding/thermal_cycle.mfl
+#
+# Models and their limits: docs/welding.md. Rosenthal's solutions assume
+# constant properties, no latent heat and no surface losses; they describe
+# the heat-affected zone well away from the arc, not the weld pool.
+import welding
+
+# Process and parameters
+let k_arc = welding.efficiency("MAG")          # EN 1011-1: 0.8
+let U = 25 V
+let I = 250 A
+let v = 5 mm/s
+let Q = welding.heat_input(voltage: U, current: I, speed: v, efficiency: k_arc)
+let q = k_arc * U * I                          # net arc power
+
+# Plate: structural steel, properties typical of the 500-800 degC range
+let d = 10 mm
+let k_s = 30 W/(m*K)
+let rho = 7850 kg/m^3
+let cp = 640 J/(kg*K)
+let T0 = 20 degC
+
+print("heat input:", Q.to(kJ/mm), "| net power:", q.to(kW))
+
+# Cooling time 800 -> 500 degC
+let d_t = welding.en1011_transition(heat_input: Q, preheat: T0)
+if d < d_t {
+    print("plate", d, "is below the transition thickness", d_t.to(mm), "-> 2-D heat flow (thin plate)")
+} else {
+    print("plate", d, "is above the transition thickness", d_t.to(mm), "-> 3-D heat flow (thick plate)")
+}
+print("t8/5 EN 1011-2 (steel):", welding.t85_en1011(heat_input: Q, thickness: d, preheat: T0))
+print("t8/5 Rosenthal thick:  ", welding.t85_thick(heat_input: Q, conductivity: k_s, preheat: T0))
+print("t8/5 Rosenthal thin:   ", welding.t85_thin(heat_input: Q, thickness: d, conductivity: k_s,
+                                                   density: rho, specific_heat: cp, preheat: T0))
+
+# Peak temperatures across the weld (thin-plate field: 2-D heat flow here)
+for y in [5 mm, 8 mm, 12 mm, 20 mm] {
+    let Tp = welding.peak_thin(power: q, speed: v, thickness: d, conductivity: k_s, density: rho,
+                               specific_heat: cp, preheat: T0, distance: y)
+    print("peak at", y, "from the centre line:", Tp.to(degC))
+}
+
+# Fused zone and heat-affected zone (melting ~1500 degC, A1 = 727 degC)
+let y_fz = welding.distance_for_peak_thin(power: q, speed: v, thickness: d, conductivity: k_s,
+                                          density: rho, specific_heat: cp, preheat: T0,
+                                          temperature: 1500 degC)
+let y_haz = welding.distance_for_peak_thin(power: q, speed: v, thickness: d, conductivity: k_s,
+                                           density: rho, specific_heat: cp, preheat: T0,
+                                           temperature: 727 degC)
+print("fused zone half-width:", y_fz.to(mm), "| HAZ width:", (y_haz - y_fz).to(mm))

@@ -1,0 +1,5 @@
+10:1 let voltage: Quantity[kg*m^2/(s^3*A)]
+11:1 let current: Quantity[A]
+12:1 let speed: Quantity[m/s]
+13:1 let efficiency: Number
+15:1 let energy: Quantity[kg*m/s^2]

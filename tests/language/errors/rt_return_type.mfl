@@ -1,0 +1,3 @@
+fn as_length(x) -> Quantity[m] { return x }
+print(as_length(3 mm))
+print(as_length(3 s))

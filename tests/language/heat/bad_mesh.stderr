@@ -1,0 +1,1 @@
+tests/language/heat/bad_mesh.mfl:4:1: runtime error: heat.mesh: the mesh must be uniform (spacing 0.03333333333333333 m); node 1 is at 10 mm (use numerical.linspace)

@@ -1,0 +1,2 @@
+import welding
+print(welding.t85_en1011(heat_input: 1 kJ/mm, thickness: 10 mm, preheat: 550 degC))

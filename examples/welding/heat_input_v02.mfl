@@ -1,0 +1,48 @@
+# heat_input_v02.mfl - MFL v0.2 acceptance demonstration (welding heat input)
+#
+# Run: `mfl examples/welding/heat_input_v02.mfl`. Uses a function with
+# annotated parameters and return type, an array of travel speeds in
+# different units, for/while loops, if/else, unannotated (gradually typed)
+# code, push/len, and absolute temperatures in degC.
+
+# Net heat input per unit length: Q = eta * U * I / v
+fn heat_input(voltage: Quantity[V], current: Quantity[A], speed: Quantity[mm/s],
+              efficiency: Number) -> Quantity[J/mm] {
+    return efficiency * voltage * current / speed
+}
+
+# Unannotated: `values` is Any, so its use is checked when it runs.
+fn mean(values) {
+    var total = values[0]
+    var i = 1
+    while i < len(values) {
+        total = total + values[i]
+        i = i + 1
+    }
+    return total / len(values)
+}
+
+let speeds = [5 mm/s, 0.005 m/s, 10 mm/s, 0 mm/s]
+var results: Array[Quantity[J/mm]] = []
+
+for v in speeds {
+    if v == 0 m/s {
+        print("v =", v, "-> arc not moving: heat input not defined, skipped")
+    } else {
+        let q = heat_input(20 V, 150 A, v, 0.8)
+        push(results, q)
+        print("v =", v, "->", q.to(J/mm))
+    }
+}
+
+print("computed", len(results), "of", len(speeds), "cases; mean =", mean(results).to(J/mm))
+
+# Without the check above, the division follows IEEE 754 (no exception):
+print("unchecked v = 0:", heat_input(20 V, 150 A, 0 mm/s, 0.8).to(J/mm))
+
+# Interpass temperature: absolute temperatures in degC, differences in K.
+let interpass = 150 degC
+let limit = 250 degC
+if interpass < limit {
+    print("interpass", interpass, "is", (limit - interpass).to(delta_degC), "below the limit", limit)
+}

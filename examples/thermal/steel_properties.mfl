@@ -1,0 +1,25 @@
+# steel_properties.mfl - thermal properties of a structural steel and
+# derived quantities used by the welding heat-conduction models.
+#
+# Run: `mfl examples/thermal/steel_properties.mfl`; inferred dimensions:
+# `mfl --types examples/thermal/steel_properties.mfl`. Fo < 0.5 means an
+# explicit (FTCS) step is stable. Property values are typical figures for a
+# low-carbon steel near room temperature, for illustration only.
+
+let k   = 45 W/(m*K)        # thermal conductivity
+let rho = 7850 kg/m^3       # density
+let cp  = 460 J/(kg*K)      # specific heat
+
+let alpha = k / (rho * cp)  # thermal diffusivity, m^2/s
+print(alpha.to(mm^2/s))
+
+# Fourier number for a time step and grid spacing (must be dimensionless)
+let dt = 0.01 s
+let dx = 0.5 mm
+let Fo = alpha * dt / dx^2
+print(Fo)
+
+# Gas flow and arc power
+let flow  = 15 L/min
+let power = 0.8 * 20 V * 150 A
+print(flow.to(m^3/s), power.to(kW))

@@ -1,0 +1,15 @@
+tests/language/errors/compile_modules.mfl:4:1: error: unknown module 'fluids' (available modules: math, numerical, heat, welding; to import a file, write import "fluids.mfl")
+tests/language/errors/compile_modules.mfl:5:1: error: module 'numerical' is already imported at 2:1
+tests/language/errors/compile_modules.mfl:6:33: error: argument 2 of 'numerical.linspace' ('stop') must be Quantity[m] (like argument 1), found Quantity[s]
+tests/language/errors/compile_modules.mfl:7:23: error: numerical.sum cannot add absolute temperatures (degC); convert them with .to(K) first
+tests/language/errors/compile_modules.mfl:8:9: error: module 'numerical' has no member 'foo' (it has: linspace, sum, mean)
+tests/language/errors/compile_modules.mfl:9:9: error: 'numerical.linspace' takes 3 arguments, but 2 were given
+tests/language/errors/compile_modules.mfl:10:18: error: argument 1 of 'math.sin' ('x') must be a plain Number (dimensionless), found Quantity[m]
+tests/language/errors/compile_modules.mfl:11:19: error: argument 1 of 'math.sqrt' ('x') must be a quantity whose dimension has even exponents (e.g. m^2, m^2/s^2), found Quantity[m]
+tests/language/errors/compile_modules.mfl:12:23: error: argument 1 of 'numerical.sum' ('values') must be an array, found Number
+tests/language/errors/compile_modules.mfl:13:24: error: argument 1 of 'numerical.mean' ('values') must be an array of numbers, found Array[String]
+tests/language/errors/compile_modules.mfl:14:9: error: 'math.pi' is a constant, not a function: write math.pi without '()'
+tests/language/errors/compile_modules.mfl:15:9: error: 'numerical.sum' is a function; call it, e.g. numerical.sum(...)
+tests/language/errors/compile_modules.mfl:16:9: error: 'numerical' is a module: use its functions, e.g. numerical.name(...)
+tests/language/errors/compile_modules.mfl:17:1: error: 'math' is the name of the module imported at 3:1
+tests/language/errors/compile_modules.mfl:18:38: error: argument 3 of 'numerical.linspace' ('count') must be a plain Number (a count), found Quantity[s]

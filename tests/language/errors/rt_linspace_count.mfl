@@ -1,0 +1,3 @@
+import numerical
+fn points(n) { return numerical.linspace(0 mm, 10 mm, n) }
+print(points(1))

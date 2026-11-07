@@ -1,0 +1,6 @@
+10:1 (let voltage (quantity 20 V))
+11:1 (let current (quantity 150 A))
+12:1 (let speed (quantity 5 (/ mm s)))
+13:1 (let efficiency 0.8)
+15:1 (let energy (/ (* (* efficiency voltage) current) speed))
+17:1 (expr (call print (call (. energy to) (/ J mm))))

@@ -1,0 +1,17 @@
+# Checks of the calorimetry lab model (run by CTest; see examples/lab/README.md).
+import "calorimetro.mfl"
+let m = massa_agua(200 mL)
+print(m)
+print(misturar(m, 20 degC, m, 60 degC).value_in(degC) - 40 < 1e-9)   # equal masses: mean
+print(misturar(0 kg, 25 degC, 0 kg, 30 degC))                       # nothing to mix
+print(banho(100 degC, 2000 W, 10 s))                                # boiling: stays at 100
+# Energy is conserved by the exchange: Ca*Tw + Cs*Ts stays the same.
+let Cs = (0.2 kg) * (460 J/(kg*K))
+let Ca = m * c_agua
+let r = trocar(m, 20 degC, 0.2 kg, 460 J/(kg*K), 100 degC, 27 W/K, 5 s)
+let before = Ca * (20 degC).to(K) + Cs * (100 degC).to(K)
+let after = Ca * r[0].to(K) + Cs * r[1].to(K)
+print((after - before) / before < 1e-12 and (before - after) / before < 1e-12)
+# At equilibrium the measured c is the true one.
+let rf = trocar(m, 20 degC, 0.2 kg, 460 J/(kg*K), 100 degC, 27 W/K, 1000 s)
+print(cp_medido(m, 20 degC, 0.2 kg, 100 degC, rf[0]).to(J/(kg*K)))

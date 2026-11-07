@@ -1,0 +1,1 @@
+tests/language/imports/lib/cycle_b.mfl:1:1: error: import cycle: tests/language/imports/lib/cycle_a.mfl -> tests/language/imports/lib/cycle_b.mfl -> tests/language/imports/lib/cycle_a.mfl (a file cannot import itself, directly or through other files)

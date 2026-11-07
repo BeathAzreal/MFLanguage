@@ -1,0 +1,12 @@
+# Explicit scheme above its stability limit: rejected before running.
+import heat
+heat.bar(100 mm, 45 W/(m*K), 7850 kg/m^3, 460 J/(kg*K))
+heat.nodes(21)
+heat.initial_temperature(20 degC)
+heat.left_temperature(500 degC)
+heat.right_insulated()
+heat.time_step(2 s)
+heat.end_time(10 min)
+print("max:", heat.max_time_step())
+heat.run()
+print("not reached")

@@ -1,0 +1,5 @@
+tests/language/errors/compile_welding.mfl:3:37: error: argument 1 of 'welding.heat_input' ('voltage') must be Quantity[kg*m^2/(s^3*A)] (V), found Quantity[A]
+tests/language/errors/compile_welding.mfl:4:28: error: argument 1 of 'welding.efficiency' ('process') must be a String, found Number
+tests/language/errors/compile_welding.mfl:5:83: error: argument 3 of 'welding.t85_thick' ('preheat') must be an absolute temperature (K or degC), found a temperature difference in delta_degC
+tests/language/errors/compile_welding.mfl:6:9: error: missing argument 'distance' of 'welding.peak_thick' (its parameters are: power, speed, conductivity, density, specific_heat, preheat, distance)
+tests/language/errors/compile_welding.mfl:10:33: error: 'welding.t85_thin' has no parameter 'speed' (its parameters are: heat_input, thickness, conductivity, density, specific_heat, preheat)

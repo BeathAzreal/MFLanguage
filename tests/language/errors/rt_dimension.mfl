@@ -1,0 +1,4 @@
+# Unannotated function: the mistake is only visible when it runs.
+fn add(a, b) { return a + b }
+print(add(1 m, 2 mm))
+print(add(1 m, 2 s))

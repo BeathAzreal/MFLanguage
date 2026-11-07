@@ -1,0 +1,2 @@
+import "lib/cycle_a.mfl"
+print(a)

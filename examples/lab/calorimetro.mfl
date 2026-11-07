@@ -1,0 +1,55 @@
+# Physical model of the virtual calorimetry lab (examples/lab/).
+# The game calls these functions every 0.2 s of lab time; a teacher can
+# read and change them. Temperatures in degC are absolute: they are
+# converted to K before being weighted (degC cannot be multiplied).
+import math
+
+let c_agua = 4186 J/(kg*K)       # specific heat of water
+let rho_agua = 1 g/mL
+let T_amb = 22 degC              # room
+
+fn massa_agua(V: Quantity[mL]) -> Quantity[kg] {
+    return (rho_agua * V).to(kg)
+}
+
+# Two portions of water mixed (weighted mean, in kelvin).
+fn misturar(m1: Quantity[kg], T1: Quantity[degC], m2: Quantity[kg], T2: Quantity[degC])
+    -> Quantity[degC] {
+    if m1 + m2 == 0 kg {
+        return T1
+    }
+    return ((m1 * T1.to(K) + m2 * T2.to(K)) / (m1 + m2)).to(degC)
+}
+
+# Boiling bath: 1 kg of water on the burner, losses to the room, boils at 100 degC.
+fn banho(T: Quantity[degC], P: Quantity[W], dt: Quantity[s]) -> Quantity[degC] {
+    let perda = 6 W/K * (T - T_amb)
+    var novo = T + (P - perda) * dt / ((1 kg) * c_agua)
+    if novo > 100 degC {
+        novo = 100 degC
+    }
+    return novo
+}
+
+# A body approaching a temperature with time constant tau (implicit, stable).
+fn aproximar(T: Quantity[degC], T_alvo: Quantity[degC], tau: Quantity[s], dt: Quantity[s])
+    -> Quantity[degC] {
+    return T + (T_alvo - T) * (dt / (tau + dt))
+}
+
+# Water and metal sample exchanging heat in the insulated calorimeter:
+# exact solution of the two-body exchange over dt (hA grows when stirring).
+fn trocar(m_a: Quantity[kg], T_a: Quantity[degC], m_s: Quantity[kg], c_s: Quantity[J/(kg*K)],
+          T_s: Quantity[degC], hA: Quantity[W/K], dt: Quantity[s]) -> Array[Quantity[degC]] {
+    let Ca = m_a * c_agua
+    let Cs = m_s * c_s
+    let T_eq = ((Ca * T_a.to(K) + Cs * T_s.to(K)) / (Ca + Cs)).to(degC)
+    let f = math.exp(-(hA * dt * (1 / Ca + 1 / Cs)))
+    return [T_eq + (T_a - T_eq) * f, T_eq + (T_s - T_eq) * f]
+}
+
+# Specific heat measured from the student's notes (energy balance).
+fn cp_medido(m_a: Quantity[kg], T_a0: Quantity[degC], m_s: Quantity[kg], T_s0: Quantity[degC],
+             T_f: Quantity[degC]) -> Quantity[J/(kg*K)] {
+    return m_a * c_agua * (T_f - T_a0) / (m_s * (T_s0 - T_f))
+}

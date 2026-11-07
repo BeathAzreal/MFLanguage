@@ -1,0 +1,4 @@
+*.csv -text
+examples/thermal/output/* -text
+# LF everywhere, so the source hashes recorded in export metadata match on every platform
+*.mfl text eol=lf

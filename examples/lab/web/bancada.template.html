@@ -1,0 +1,889 @@
+<title>Bancada de Calorimetria</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the lab bench fills the stage; the lab notebook (recipe, controls, notes) sits beside it.
+   Teacher replay swaps the notebook for an evaluation sheet and adds a timeline under the stage. */
+:root {
+  --bg: #eef1ee; --paper: #fbfcfa; --ink: #1b2422; --muted: #5e6b67; --rule: #cfd8d3;
+  --accent: #0f6e63; --accent-ink: #ffffff; --heat: #c2410c; --cold: #2563a8; --ok: #1d7a46; --bad: #b42318; --warn: #a15c00;
+  --display: "Bricolage Grotesque", "Trebuchet MS", sans-serif;
+  --body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #111816; --paper: #18211e; --ink: #e5ece9; --muted: #9db0aa; --rule: #2a3632;
+  --accent: #4fd1b9; --accent-ink: #062520; --heat: #fb923c; --cold: #7cb2f0; --ok: #5fd39a; --bad: #ff8a80; --warn: #f2b45a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #111816; --paper: #18211e; --ink: #e5ece9; --muted: #9db0aa; --rule: #2a3632;
+  --accent: #4fd1b9; --accent-ink: #062520; --heat: #fb923c; --cold: #7cb2f0; --ok: #5fd39a; --bad: #ff8a80; --warn: #f2b45a; color-scheme: dark }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 16px 36px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 14px; }
+header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+h1 { font-family: var(--display); font-weight: 800; font-size: 30px; margin: 0; letter-spacing: -0.01em; }
+.sub { color: var(--muted); margin: 0; flex: 1 1 320px; }
+nav { display: flex; gap: 4px; background: var(--paper); border: 1px solid var(--rule); border-radius: 999px; padding: 3px; }
+nav button { border: 0; background: none; color: var(--muted); padding: 6px 14px; border-radius: 999px; font: 600 14px var(--body); cursor: pointer; }
+nav button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 14px; align-items: start; }
+@media (max-width: 980px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.stage { position: relative; background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; min-width: 0; }
+canvas.scene { display: block; width: 100%; height: auto; touch-action: none; cursor: grab; }
+.side { display: grid; gap: 12px; min-width: 0; }
+.card { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+.card h2 { font-family: var(--display); font-size: 18px; margin: 0; font-weight: 800; }
+.card h3 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+ol.recipe { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 8px; counter-reset: s; }
+ol.recipe li { counter-increment: s; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 8px; color: var(--muted); }
+ol.recipe li::before { content: counter(s); font: 700 13px var(--mono); width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--rule); display: grid; place-items: center; }
+ol.recipe li.now { color: var(--ink); }
+ol.recipe li.now::before { border-color: var(--accent); color: var(--accent); }
+ol.recipe li.done { color: var(--ink); }
+ol.recipe li.done::before { content: "✓"; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.hint { font-size: 13px; color: var(--muted); }
+ol.recipe li .hint { display: block; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button.btn { font: 600 14px var(--body); border-radius: 8px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); padding: 8px 12px; cursor: pointer; }
+button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.btn:disabled { opacity: 0.45; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+label.knob { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+label.knob input { width: 100%; accent-color: var(--heat); }
+dl.notes { display: grid; grid-template-columns: auto auto; gap: 4px 12px; margin: 0; font-variant-numeric: tabular-nums; }
+dl.notes dt { color: var(--muted); font-size: 13px; }
+dl.notes dd { margin: 0; font-family: var(--mono); font-size: 13px; text-align: right; }
+.grade { font-family: var(--display); font-size: 26px; font-weight: 800; }
+.grade.ok { color: var(--ok); } .grade.warn { color: var(--warn); } .grade.bad { color: var(--bad); }
+table.eval { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.eval th, table.eval td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+table.eval td.n { font-family: var(--mono); text-align: right; white-space: nowrap; }
+.pill { font: 600 11px var(--body); padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); }
+.timeline { background: var(--paper); border: 1px solid var(--rule); border-radius: 10px; padding: 10px 14px; display: grid; gap: 8px; }
+.timeline .row input[type=range] { flex: 1 1 260px; accent-color: var(--accent); }
+.mono { font-family: var(--mono); font-size: 12px; }
+.chart { width: 100%; height: auto; display: block; }
+ul.events { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 220px; overflow: auto; font-size: 13px; }
+ul.events li { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+ul.events li:hover { background: var(--bg); }
+ul.events li span:first-child { font-family: var(--mono); color: var(--muted); }
+ul.attempts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+ul.attempts button { width: 100%; text-align: left; display: grid; gap: 2px; }
+details pre { font: 12px/1.5 var(--mono); white-space: pre; overflow: auto; max-height: 300px; background: var(--bg); padding: 10px; border-radius: 6px; margin: 8px 0 0; }
+.toast { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: var(--ink); color: var(--paper); padding: 6px 12px; border-radius: 999px; font-size: 13px; pointer-events: none; opacity: 0; transition: opacity .25s; max-width: 90%; text-align: center; }
+.toast.on { opacity: 0.92; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Bancada de Calorimetria</h1>
+    <p class="sub">Descubra o calor específico de um metal desconhecido. A física do laboratório roda no motor MFL (WebAssembly), com o modelo <span class="mono">calorimetro.mfl</span>.</p>
+    <nav aria-label="Modo">
+      <button id="mode-lab" aria-pressed="true">Experimento</button>
+      <button id="mode-replay" aria-pressed="false">Replays</button>
+    </nav>
+  </header>
+
+  <div class="main">
+    <div class="stage" id="stage">
+      <canvas class="scene" id="scene" width="1000" height="560" aria-label="Bancada: béquer de água à esquerda, calorímetro no centro, banho fervente com a amostra à direita"></canvas>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <!-- Lab notebook (experiment) -->
+    <aside class="side" id="side-lab">
+      <section class="card">
+        <h2>Roteiro</h2>
+        <ol class="recipe" id="recipe">
+          <li><div>Despeje <b>200 mL</b> de água (20 °C) no calorímetro. <span class="hint">Clique no béquer, arraste para cima para inclinar e solte para parar.</span></div></li>
+          <li><div>Ligue o bico de Bunsen e leve o banho à fervura (100 °C). <span class="hint">Espere a amostra aquecer junto com a água.</span></div></li>
+          <li><div>Transfira a amostra para o calorímetro com a pinça. <span class="hint">Clique na amostra e depois no calorímetro.</span></div></li>
+          <li><div>Mexa com o agitador até a temperatura parar de subir. <span class="hint">Faça círculos sobre o calorímetro.</span></div></li>
+          <li><div>Registre a temperatura final.</div></li>
+        </ol>
+      </section>
+      <section class="card">
+        <h3>Bancada</h3>
+        <label class="knob" for="burner">Chama do bico de Bunsen: <b id="burner-label">desligada</b>
+          <input type="range" id="burner" min="0" max="100" value="0" step="5">
+        </label>
+        <div class="row">
+          <button class="btn" id="btn-beaker">Pegar o béquer</button>
+          <button class="btn" id="btn-sample">Transferir a amostra</button>
+        </div>
+        <div class="row">
+          <button class="btn" id="btn-fast" aria-pressed="false">⏩ Acelerar 4×</button>
+          <button class="btn primary" id="btn-record" disabled>Registrar temperatura</button>
+        </div>
+      </section>
+      <section class="card">
+        <h3>Caderno</h3>
+        <dl class="notes" id="notes"></dl>
+        <div id="result" hidden></div>
+        <div class="row"><button class="btn" id="btn-restart">Recomeçar</button><span class="hint" id="save-state"></span></div>
+      </section>
+    </aside>
+
+    <!-- Teacher sheet (replay) -->
+    <aside class="side" id="side-replay" hidden>
+      <section class="card" id="attempts-card">
+        <h2>Tentativas</h2>
+        <p class="hint" id="attempts-hint">Carregando…</p>
+        <ul class="attempts" id="attempts"></ul>
+      </section>
+      <section class="card" id="eval-card" hidden>
+        <h2 id="eval-title">Avaliação</h2>
+        <div id="eval"></div>
+      </section>
+      <section class="card" id="events-card" hidden>
+        <h3>Ações do aluno</h3>
+        <ul class="events" id="events"></ul>
+      </section>
+      <section class="card">
+        <details><summary>Modelo físico usado (MFL)</summary><pre id="model-text"></pre></details>
+      </section>
+    </aside>
+  </div>
+
+  <section class="timeline" id="timeline" hidden>
+    <div class="row">
+      <button class="btn" id="rp-play">▶ Reproduzir</button>
+      <select id="rp-speed" class="btn" aria-label="Velocidade do replay"><option value="1">1×</option><option value="4" selected>4×</option><option value="10">10×</option></select>
+      <input type="range" id="rp-pos" min="0" max="1000" value="0" aria-label="Posição no replay">
+      <span class="mono" id="rp-time">0:00</span>
+    </div>
+    <canvas class="chart" id="chart" width="1300" height="220" aria-label="Temperaturas ao longo do tempo"></canvas>
+  </section>
+</div>
+
+<script>/*MFL_JS*/</script>
+<script>
+"use strict";
+const WASM_B64 = "/*WASM_B64*/";
+const MODEL = /*MODEL*/;
+
+/* ======================================================================
+ * Setup
+ * ==================================================================== */
+const $ = (id) => document.getElementById(id);
+const cv = $("scene"), g = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const MATERIALS = [
+  { name: "alumínio", cp: 897, color: "#c9cfd6" },
+  { name: "aço carbono", cp: 460, color: "#8b939c" },
+  { name: "cobre", cp: 385, color: "#c8794a" },
+  { name: "chumbo", cp: 129, color: "#6f7480" },
+];
+const TICK = 0.2;               /* s of real time per physics step */
+const BEAKER_HOME = { x: 170, y: 380 }, BEAKER_POUR = { x: 395, y: 210 };
+const VESSEL = { x: 520, y: 420, r: 78, h: 150, cap: 330 };
+const BATH = { x: 815, y: 360 };
+const T_WATER = 20;             /* degC, water in the beaker */
+
+let mfl = null;                 /* the MFL engine (WebAssembly) */
+let engineError = "";
+
+/* MFL number literal: no sign, '.', optional exponent. */
+function lit(x) {
+  if (!isFinite(x)) throw new Error("non-finite value");
+  const s = Math.abs(x).toString();
+  return x < 0 ? "(0 - " + s + ")" : s;
+}
+
+/* ======================================================================
+ * Experiment state
+ * ==================================================================== */
+let S, rec, mode = "lab", replay = null;
+
+function newExperiment() {
+  const mat = MATERIALS[Math.floor(Math.random() * MATERIALS.length)];
+  S = {
+    t: 0, speed: 1,
+    beakerVol: 400, beaker: "home", tilt: 0, tiltTarget: 0,
+    V: 0, Tw: 22, spill: 0, poured: 0,
+    Tb: 60, P: 0, Ts: 60, sample: "bath", sx: BATH.x, sy: BATH.y - 30,
+    stir: 0, stirAngle: 0, material: mat, ms: 0.2,
+    notes: {}, step: 0, finished: false, result: null,
+  };
+  rec = { frames: [], events: [], started: new Date().toISOString() };
+  logEvent("início", "Banho a 60 °C, amostra de " + (S.ms * 1000) + " g no banho");
+  $("burner").value = "0"; updateBurnerLabel();
+  $("result").hidden = true; $("result").innerHTML = "";
+  $("save-state").textContent = "";
+  renderNotes(); renderRecipe(); updateButtons();
+}
+
+function logEvent(type, text) { rec.events.push({ t: +S.t.toFixed(2), type, text }); }
+
+/* One physics step through the MFL engine. */
+function physicsStep(dt) {
+  if (!mfl) return;
+  const lines = ['import "calorimetro.mfl"'];
+  /* pouring: flow grows with the tilt beyond 25 degrees-equivalent */
+  let dv = 0;
+  if (S.beaker === "pour" && S.tilt > 0.3 && S.beakerVol > 0) {
+    dv = Math.min(S.beakerVol, 45 * (S.tilt - 0.3) / 0.7 * dt);
+  }
+  lines.push(`let Tb = banho(${lit(S.Tb)} degC, ${lit(S.P)} W, ${lit(dt)} s)`);
+  lines.push(`var Tw = ${lit(S.Tw)} degC`);
+  lines.push(`var Ts = ${lit(S.Ts)} degC`);
+  const Vafter = S.V + dv;
+  if (dv > 0) lines.push(`Tw = misturar(massa_agua(${lit(S.V)} mL), Tw, massa_agua(${lit(dv)} mL), ${T_WATER} degC)`);
+  const hA = 1.5 + 30 * S.stir;
+  if (S.sample === "bath") lines.push(`Ts = aproximar(Ts, Tb, 8 s, ${lit(dt)} s)`);
+  else if (S.sample === "held") lines.push(`Ts = aproximar(Ts, T_amb, 90 s, ${lit(dt)} s)`);
+  else if (Vafter < 1) lines.push(`Ts = aproximar(Ts, T_amb, 120 s, ${lit(dt)} s)`);
+  else {
+    lines.push(`let r = trocar(massa_agua(${lit(Math.min(Vafter, VESSEL.cap))} mL), Tw, ${lit(S.ms)} kg, ${S.material.cp} J/(kg*K), Ts, ${lit(hA)} W/K, ${lit(dt)} s)`);
+    lines.push("Tw = r[0]", "Ts = r[1]");
+  }
+  if (S.sample !== "vessel" && Vafter >= 1) lines.push(`Tw = aproximar(Tw, T_amb, 3000 s, ${lit(dt)} s)`);
+  lines.push("print(Tb.value_in(degC), Ts.value_in(degC), Tw.value_in(degC))");
+  mfl.addFile("passo.mfl", lines.join("\n") + "\n");
+  const r = mfl.run("passo.mfl", { maxSteps: 1000000 });
+  if (r.status !== 0) { engineError = r.stderr; return; }
+  const [tb, ts, tw] = r.stdout.trim().split(" ").map(Number);
+  S.Tb = tb; S.Ts = ts; S.Tw = Vafter >= 1 ? tw : 22;
+  S.beakerVol -= dv;
+  if (dv > 0) {
+    S.poured += dv;
+    S.V = Vafter;
+    if (S.V > VESSEL.cap) { S.spill += S.V - VESSEL.cap; S.V = VESSEL.cap; }
+  }
+  S.t += dt;
+}
+
+/* Rounded thermometer readings (what the student sees). */
+const shown = (x) => Math.round(x * 10) / 10;
+
+function tick() {
+  if (mode !== "lab" || S.finished) return;
+  const dt = TICK * S.speed;
+  const wasSpill = S.spill;
+  physicsStep(dt);
+  if (S.spill > wasSpill + 0.05 && S.spill - wasSpill > 0) toast("A água está transbordando do calorímetro!");
+  S.stir *= Math.pow(0.35, TICK);  /* stirring fades when the rod stops */
+  rec.frames.push(frameOf(S));
+  checkSteps();
+  renderNotes(); updateButtons();
+  if (S.t > 900) finish("tempo esgotado (15 min)");
+}
+
+function frameOf(s) {
+  const r2 = (x) => Math.round(x * 100) / 100;
+  return [r2(s.t), r2(s.V), r2(s.Tw), r2(s.Ts), r2(s.Tb), s.P, r2(s.tilt), s.beaker === "pour" ? 1 : 0,
+          ["bath", "held", "vessel"].indexOf(s.sample), Math.round(s.sx), Math.round(s.sy), r2(s.stir),
+          r2(s.stirAngle), r2(s.beakerVol), r2(s.spill), s.speed];
+}
+function stateOf(f) {
+  return { t: f[0], V: f[1], Tw: f[2], Ts: f[3], Tb: f[4], P: f[5], tilt: f[6], beaker: f[7] ? "pour" : "home",
+           sample: ["bath", "held", "vessel"][f[8]], sx: f[9], sy: f[10], stir: f[11], stirAngle: f[12],
+           beakerVol: f[13], spill: f[14], speed: f[15] };
+}
+
+/* ======================================================================
+ * Steps and notes
+ * ==================================================================== */
+function checkSteps() {
+  const n = S.notes;
+  if (S.step === 0 && S.beaker === "home" && S.V > 1) { S.step = 1; logEvent("passo", "Água no calorímetro: " + S.V.toFixed(1) + " mL"); n.V = S.V; }
+  if (S.step === 1 && S.Tb >= 99.5) { S.step = 2; logEvent("passo", "Banho fervendo"); }
+  if (S.step <= 2 && S.sample === "vessel") { S.step = 3; }
+  if (S.step === 3 && rec.events.some((x) => x.type === "agitar")) { S.step = 4; }
+  if (S.finished && S.notes.Tf !== undefined) { S.step = 5; }
+  renderRecipe();
+}
+
+function renderRecipe() {
+  [...$("recipe").children].forEach((li, i) => { li.className = i < S.step ? "done" : i === S.step ? "now" : ""; });
+}
+
+function renderNotes() {
+  const n = S.notes, d = $("notes");
+  const row = (k, v) => `<dt>${k}</dt><dd>${v}</dd>`;
+  let h = row("Tempo", fmtTime(S.t));
+  h += row("Água no calorímetro", S.V.toFixed(0) + " mL");
+  h += row("Termômetro do calorímetro", S.V >= 1 ? shown(S.Tw).toFixed(1) + " °C" : "—");
+  h += row("Termômetro do banho", shown(S.Tb).toFixed(1) + " °C");
+  h += row("Massa da amostra", (S.ms * 1000).toFixed(0) + " g");
+  if (n.Ta0 !== undefined) h += row("T inicial da água", n.Ta0.toFixed(1) + " °C");
+  if (n.Ts0 !== undefined) h += row("T da amostra (banho)", n.Ts0.toFixed(1) + " °C");
+  if (n.Tf !== undefined) h += row("T final registrada", n.Tf.toFixed(1) + " °C");
+  d.innerHTML = h;
+}
+
+function updateButtons() {
+  $("btn-beaker").textContent = S.beaker === "pour" ? "Devolver o béquer" : "Pegar o béquer";
+  $("btn-beaker").disabled = S.finished;
+  $("btn-sample").disabled = S.finished || S.sample === "vessel";
+  $("btn-sample").textContent = S.sample === "held" ? "Soltar no calorímetro" : "Transferir a amostra";
+  $("btn-record").disabled = S.finished || S.sample !== "vessel";
+  $("burner").disabled = S.finished;
+}
+
+function updateBurnerLabel() {
+  const v = +$("burner").value;
+  $("burner-label").textContent = v === 0 ? "desligada" : v + "% (" + (v * 20) + " W)";
+}
+
+const fmtTime = (t) => Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0");
+
+/* ======================================================================
+ * Interaction
+ * ==================================================================== */
+function toLocal(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+}
+const inBeaker = (p) => { const b = S.beaker === "pour" ? BEAKER_POUR : BEAKER_HOME; return Math.abs(p.x - b.x) < 60 && p.y > b.y - 110 && p.y < b.y + 20; };
+const inVessel = (p) => Math.abs(p.x - VESSEL.x) < VESSEL.r + 20 && p.y > VESSEL.y - VESSEL.h - 30 && p.y < VESSEL.y + 10;
+const inSample = (p) => Math.hypot(p.x - S.sx, p.y - S.sy) < 40;
+const inBath = (p) => Math.abs(p.x - BATH.x) < 110 && p.y > BATH.y - 140 && p.y < BATH.y + 40;
+
+let drag = null;
+cv.addEventListener("pointerdown", (e) => {
+  if (mode !== "lab" || S.finished) return;
+  const p = toLocal(e);
+  cv.setPointerCapture(e.pointerId);
+  if (S.sample === "held") {
+    if (inVessel(p)) dropSample(); else if (inBath(p)) { S.sample = "bath"; S.sx = BATH.x; S.sy = BATH.y - 30; logEvent("amostra", "Devolvida ao banho"); updateButtons(); }
+    return;
+  }
+  if (S.beaker === "pour") { drag = { kind: "tilt", y0: p.y, tilt0: S.tiltTarget, onBeaker: inBeaker(p), moved: false }; return; }
+  if (inBeaker(p)) { toggleBeaker(); return; }
+  if (inSample(p) && S.sample === "bath") { pickSample(); return; }
+  if (inVessel(p)) { drag = { kind: "stir", a: Math.atan2(p.y - (VESSEL.y - 60), p.x - VESSEL.x), t: performance.now() }; return; }
+});
+cv.addEventListener("pointermove", (e) => {
+  if (mode !== "lab") return;
+  const p = toLocal(e);
+  if (S.sample === "held") { S.sx = p.x; S.sy = Math.min(p.y, 440); }
+  if (!drag) return;
+  if (drag.kind === "tilt") {
+    if (Math.abs(p.y - drag.y0) > 4) drag.moved = true;
+    S.tiltTarget = Math.max(0, Math.min(1, drag.tilt0 + (drag.y0 - p.y) / 160));
+  } else if (drag.kind === "stir") {
+    const a = Math.atan2(p.y - (VESSEL.y - 60), p.x - VESSEL.x), now = performance.now();
+    let da = a - drag.a; if (da > Math.PI) da -= 2 * Math.PI; if (da < -Math.PI) da += 2 * Math.PI;
+    const w = Math.abs(da) / Math.max(0.016, (now - drag.t) / 1000);
+    S.stir = Math.min(1, S.stir * 0.8 + 0.2 * Math.min(1, w / (2 * Math.PI)));
+    S.stirAngle += da; drag.a = a; drag.t = now;
+  }
+});
+const endDrag = () => {
+  if (drag && drag.kind === "tilt") {
+    S.tiltTarget = 0;
+    if (!drag.moved && drag.onBeaker && S.tilt < 0.05) toggleBeaker();
+  }
+  if (drag && drag.kind === "stir" && S.sample === "vessel" && !rec.events.some((x) => x.type === "agitar")) logEvent("agitar", "Começou a mexer");
+  drag = null;
+};
+cv.addEventListener("pointerup", endDrag);
+cv.addEventListener("pointercancel", endDrag);
+
+function toggleBeaker() {
+  if (S.beaker === "home") { S.beaker = "pour"; logEvent("béquer", "Pegou o béquer"); toast("Arraste para cima para inclinar e despejar; solte para parar. Clique no béquer para devolvê-lo."); }
+  else { S.beaker = "home"; S.tilt = S.tiltTarget = 0; logEvent("béquer", "Devolveu o béquer: " + S.poured.toFixed(1) + " mL despejados no total"); }
+  updateButtons();
+}
+function pickSample() {
+  S.sample = "held"; logEvent("amostra", "Pegou a amostra com a pinça (banho a " + shown(S.Tb).toFixed(1) + " °C)");
+  toast("Clique no calorímetro para soltar a amostra."); updateButtons();
+}
+function dropSample() {
+  S.sample = "vessel"; S.sx = VESSEL.x + 18; S.sy = VESSEL.y - 30;
+  S.notes.Ta0 = shown(S.Tw); S.notes.Ts0 = shown(S.Tb); S.notes.V = S.V;
+  logEvent("amostra", `Soltou a amostra no calorímetro (água ${S.notes.Ta0.toFixed(1)} °C, banho ${S.notes.Ts0.toFixed(1)} °C, ${S.V.toFixed(1)} mL)`);
+  if (S.V < 1) toast("O calorímetro está vazio: a medição não vai funcionar.");
+  checkSteps(); updateButtons();
+}
+
+$("btn-beaker").addEventListener("click", () => { if (S.tilt < 0.05) toggleBeaker(); });
+$("btn-sample").addEventListener("click", () => {
+  if (S.sample === "bath") { pickSample(); S.sx = VESSEL.x; S.sy = VESSEL.y - VESSEL.h - 40; }
+  else if (S.sample === "held") dropSample();
+});
+$("burner").addEventListener("input", () => { S.P = +$("burner").value * 20; updateBurnerLabel(); });
+$("burner").addEventListener("change", () => logEvent("chama", "Chama em " + $("burner").value + "% (" + S.P + " W)"));
+$("btn-fast").addEventListener("click", (e) => {
+  S.speed = S.speed === 1 ? 4 : 1; e.currentTarget.setAttribute("aria-pressed", String(S.speed === 4));
+  logEvent("tempo", S.speed === 4 ? "Acelerou 4×" : "Velocidade normal");
+});
+$("btn-record").addEventListener("click", () => {
+  S.notes.Tf = shown(S.Tw); logEvent("registro", "Registrou T final = " + S.notes.Tf.toFixed(1) + " °C");
+  finish("registro");
+});
+$("btn-restart").addEventListener("click", () => newExperiment());
+document.addEventListener("keydown", (e) => {
+  if (mode !== "lab" || S.finished || S.beaker !== "pour") return;
+  if (e.key === "ArrowUp") { S.tiltTarget = Math.min(1, S.tiltTarget + 0.1); e.preventDefault(); }
+  if (e.key === "ArrowDown") { S.tiltTarget = Math.max(0, S.tiltTarget - 0.1); e.preventDefault(); }
+});
+
+let toastTimer = 0;
+function toast(text) { const t = $("toast"); t.textContent = text; t.classList.add("on"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2600); }
+
+/* ======================================================================
+ * Result: computed by the MFL model (cp_medido), graded
+ * ==================================================================== */
+function computeCp(n, ms) {
+  const prog = ['import "calorimetro.mfl"',
+    `let cp = cp_medido(massa_agua(${lit(n.V)} mL), ${lit(n.Ta0)} degC, ${lit(ms)} kg, ${lit(n.Ts0)} degC, ${lit(n.Tf)} degC)`,
+    "print(cp.value_in(J/(kg*K)))"].join("\n");
+  mfl.addFile("resultado.mfl", prog + "\n");
+  const r = mfl.run("resultado.mfl");
+  return { program: prog, value: r.status === 0 ? Number(r.stdout) : NaN, error: r.stderr };
+}
+
+function grade(err) {
+  if (!isFinite(err)) return { label: "Refazer", cls: "bad" };
+  if (err < 0.05) return { label: "Excelente", cls: "ok" };
+  if (err < 0.10) return { label: "Bom", cls: "ok" };
+  if (err < 0.20) return { label: "Aceitável", cls: "warn" };
+  return { label: "Refazer", cls: "bad" };
+}
+
+/* Step-by-step evaluation: target vs. what was done. Shared by the result and the replay. */
+function evaluate(a) {
+  const last = stateOf(a.frames[a.frames.length - 1] || frameOf(S));
+  const transfer = a.events.find((e) => e.type === "amostra" && e.text.startsWith("Soltou"));
+  const tTransfer = transfer ? transfer.t : null;
+  const atTransfer = tTransfer !== null ? stateOf(a.frames.find((f) => f[0] >= tTransfer) || a.frames[a.frames.length - 1]) : null;
+  const rows = [];
+  const V = a.notes.V ?? last.V;
+  rows.push(["Água no calorímetro", "200 ± 5 mL", (V ?? 0).toFixed(1) + " mL", Math.abs(V - 200) <= 5 ? "ok" : Math.abs(V - 200) <= 20 ? "warn" : "bad"]);
+  rows.push(["Água derramada", "0 mL", last.spill.toFixed(1) + " mL", last.spill < 0.5 ? "ok" : "bad"]);
+  if (atTransfer) {
+    rows.push(["Amostra na transferência (oculta ao aluno)", "≥ 98 °C", atTransfer.Ts.toFixed(2) + " °C", atTransfer.Ts >= 98 ? "ok" : atTransfer.Ts >= 90 ? "warn" : "bad"]);
+    rows.push(["Banho na transferência", "100 °C", atTransfer.Tb.toFixed(2) + " °C", atTransfer.Tb >= 99.5 ? "ok" : "warn"]);
+  } else rows.push(["Transferência da amostra", "feita", "não feita", "bad"]);
+  if (a.notes.Tf !== undefined) {
+    rows.push(["Equilíbrio no registro (|T água − T amostra|)", "< 0.3 K", Math.abs(last.Tw - last.Ts).toFixed(2) + " K", Math.abs(last.Tw - last.Ts) < 0.3 ? "ok" : Math.abs(last.Tw - last.Ts) < 1.5 ? "warn" : "bad"]);
+  }
+  return rows;
+}
+
+function finish(why) {
+  if (S.finished) return;
+  S.finished = true; S.tilt = S.tiltTarget = 0;
+  rec.frames.push(frameOf(S));
+  const n = S.notes;
+  let cp = { value: NaN, program: "", error: "" };
+  if (n.Tf !== undefined && n.Ta0 !== undefined) cp = computeCp(n, S.ms);
+  const err = Math.abs(cp.value - S.material.cp) / S.material.cp;
+  const gr = grade(err);
+  const attempt = {
+    version: 1, created: rec.started, duration: +S.t.toFixed(1), why,
+    material: S.material.name, cp_true: S.material.cp, ms: S.ms,
+    notes: n, cp_measured: isFinite(cp.value) ? +cp.value.toFixed(1) : null, cp_program: cp.program,
+    error: isFinite(err) ? +err.toFixed(4) : null, grade: gr.label,
+    frames: rec.frames, events: rec.events,
+  };
+  S.result = attempt;
+  const res = $("result");
+  res.hidden = false;
+  res.innerHTML = `<div class="grade ${gr.cls}">${gr.label}</div>
+    <dl class="notes">
+      <dt>c medido (MFL)</dt><dd>${isFinite(cp.value) ? cp.value.toFixed(0) + " J/(kg·K)" : "—"}</dd>
+      <dt>Metal</dt><dd>${S.material.name}</dd>
+      <dt>c de referência</dt><dd>${S.material.cp} J/(kg·K)</dd>
+      <dt>Erro</dt><dd>${isFinite(err) ? (err * 100).toFixed(1) + " %" : "—"}</dd>
+    </dl>
+    <div class="row"><button class="btn primary" id="btn-watch">Ver replay</button></div>`;
+  $("btn-watch").addEventListener("click", () => { setMode("replay"); openReplay(attempt, "Esta tentativa"); });
+  logEvent("fim", "Resultado: " + gr.label);
+  saveAttempt(attempt);
+  checkSteps(); updateButtons(); renderNotes();
+}
+
+/* ======================================================================
+ * Storage: attempts in the artifact database (teacher sees everyone's)
+ * ==================================================================== */
+let db = null, user = null, uid = null, isTeacher = false;
+const local = [];
+async function saveAttempt(a) {
+  local.unshift(a);
+  try { localStorage.setItem("calorimetria-last", JSON.stringify(a)); } catch (e) {}
+  if (!db || !uid) { $("save-state").textContent = "Guardado só neste navegador."; return; }
+  $("save-state").textContent = "Salvando…";
+  try {
+    await db.collection("runs/" + uid + "/attempts").add({ ...a, uid, created_at: Date.now() });
+    await db.doc("runs/" + uid).set({ uid, last: Date.now() });
+    $("save-state").textContent = "Salvo para o professor.";
+  } catch (e) { $("save-state").textContent = "Não foi possível salvar (" + (e.code || "erro") + "); guardado só neste navegador."; }
+}
+
+async function loadAttempts() {
+  const list = $("attempts"), hint = $("attempts-hint");
+  list.textContent = "";
+  const items = local.map((a) => ({ a, who: "Você (esta sessão)" }));
+  if (db && uid) {
+    try {
+      const ids = isTeacher ? (await db.collection("runs").get()).docs.map((d) => d.id) : [uid];
+      let profiles = {};
+      try { profiles = user ? await user.profiles(ids) : {}; } catch (e) {}
+      for (const id of ids) {
+        const snap = await db.collection("runs/" + id + "/attempts").orderBy("created_at", "desc").limit(20).get();
+        for (const d of snap.docs) {
+          const a = d.data();
+          if (local.some((l) => l.created === a.created)) continue;
+          items.push({ a, who: id === uid ? "Você" : ((profiles[id] && profiles[id].name) || "Aluno") });
+        }
+      }
+    } catch (e) { hint.textContent = "Não foi possível ler as tentativas salvas (" + (e.code || "erro") + ")."; }
+  }
+  items.sort((x, y) => (y.a.created || "").localeCompare(x.a.created || ""));
+  if (!items.length) { hint.textContent = "Nenhuma tentativa ainda. Faça o experimento e registre a temperatura final."; return; }
+  hint.textContent = isTeacher ? "Tentativas de todos os alunos." : "Suas tentativas.";
+  for (const it of items) {
+    const li = document.createElement("li"), b = document.createElement("button");
+    b.className = "btn";
+    const when = new Date(it.a.created).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    b.innerHTML = `<b></b><span class="hint"></span>`;
+    b.firstChild.textContent = it.who + " · " + it.a.grade;
+    b.lastChild.textContent = when + " · " + it.a.material + " · " + fmtTime(it.a.duration);
+    b.addEventListener("click", () => openReplay(it.a, it.who));
+    li.appendChild(b); list.appendChild(li);
+  }
+}
+
+/* ======================================================================
+ * Drawing (shared by the experiment and the replay)
+ * ==================================================================== */
+const COL = { bench: "#c9b28b", benchDark: "#a68c62", wall: "#e8ece6", glass: "rgba(190,215,225,0.35)", glassEdge: "#7d97a3",
+  water: "rgba(96,165,210,0.75)", foam: "#f4f1e6", metal: "#8b939c", steel: "#5a6670", flame: "#3b82f6" };
+
+function lerp(a, b, f) { return a + (b - a) * f; }
+function waterColor(T) { /* cold blue -> warm orange */
+  const f = Math.max(0, Math.min(1, (T - 15) / 70));
+  return `rgba(${Math.round(lerp(80, 225, f))},${Math.round(lerp(150, 120, f))},${Math.round(lerp(215, 80, f))},0.78)`;
+}
+
+function drawScene(s, opts) {
+  const teacher = opts && opts.teacher;
+  g.clearRect(0, 0, W, H);
+  /* wall and bench */
+  const wall = g.createLinearGradient(0, 0, 0, 440);
+  wall.addColorStop(0, "#dfe6e1"); wall.addColorStop(1, "#cfd9d3");
+  g.fillStyle = wall; g.fillRect(0, 0, W, 440);
+  g.fillStyle = "rgba(0,0,0,0.04)";
+  for (let x = 0; x < W; x += 64) g.fillRect(x, 0, 1, 440);
+  for (let y = 0; y < 440; y += 32) g.fillRect(0, y, W, 1);
+  g.fillStyle = COL.bench; g.fillRect(0, 440, W, 120);
+  g.fillStyle = COL.benchDark; g.fillRect(0, 440, W, 8);
+
+  drawBath(s);
+  drawVessel(s);
+  drawBeaker(s);
+  drawSample(s, (opts && opts.material) || S.material);
+  drawReadouts(s, teacher);
+  if (teacher) drawTeacherHud(s);
+}
+
+function drawBeaker(s) {
+  const pos = s.beaker === "pour" ? BEAKER_POUR : BEAKER_HOME;
+  const ang = s.tilt * 1.15;  /* radians */
+  g.save(); g.translate(pos.x, pos.y); g.rotate(ang);
+  const w = 90, h = 120;
+  /* liquid: keep the surface horizontal in the rotated frame */
+  const frac = s.beakerVol / 500;
+  if (frac > 0.002) {
+    g.save();
+    g.beginPath(); g.rect(-w / 2 + 4, -h + 4, w - 8, h - 8); g.clip();
+    g.rotate(-ang);
+    const level = h * frac;
+    g.fillStyle = COL.water;
+    g.fillRect(-200, -level + Math.sin(ang) * 0, 400, 400);
+    g.restore();
+  }
+  g.strokeStyle = COL.glassEdge; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(-w / 2, -h); g.lineTo(-w / 2, 0); g.lineTo(w / 2, 0); g.lineTo(w / 2, -h); g.lineTo(w / 2 + 10, -h - 8); g.stroke();
+  g.fillStyle = COL.glass; g.fillRect(-w / 2, -h, w, h);
+  /* graduation marks every 100 mL */
+  g.strokeStyle = "rgba(60,80,90,0.6)"; g.lineWidth = 1.5; g.font = "12px " + css("--mono"); g.fillStyle = "rgba(40,55,60,0.8)";
+  for (let k = 1; k <= 4; k++) { const y = -h * (k * 100 / 500); g.beginPath(); g.moveTo(-w / 2, y); g.lineTo(-w / 2 + 16, y); g.stroke(); g.fillText(k * 100 + "", -w / 2 + 19, y + 4); }
+  g.restore();
+  /* stream */
+  if (s.beaker === "pour" && s.tilt > 0.3 && s.beakerVol > 0) {
+    const lipx = pos.x + Math.cos(ang) * 55 + Math.sin(ang) * 118, lipy = pos.y - Math.cos(ang) * 120 + Math.sin(ang) * 40;
+    const width = 2 + 10 * (s.tilt - 0.3);
+    g.strokeStyle = COL.water; g.lineWidth = width; g.lineCap = "round";
+    g.beginPath(); g.moveTo(lipx, lipy); g.quadraticCurveTo(lipx + 25, lipy + 10, VESSEL.x - 25, VESSEL.y - 40); g.stroke();
+  }
+  g.fillStyle = "#33413d"; g.font = "600 14px " + css("--body"); g.textAlign = "center";
+  if (s.beaker === "home") g.fillText("Água 20 °C", pos.x, pos.y + 22);
+}
+
+function drawVessel(s) {
+  const { x, y, r, h } = VESSEL;
+  /* foam calorimeter cup */
+  g.fillStyle = COL.foam; g.strokeStyle = "#b9b29c"; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x - r - 12, y - h); g.lineTo(x - r + 4, y); g.lineTo(x + r - 4, y); g.lineTo(x + r + 12, y - h); g.closePath(); g.fill(); g.stroke();
+  /* inner water (window cut-away) */
+  const wx = x - r + 22, ww = 2 * r - 44, top = y - h + 18, bottom = y - 12;
+  g.fillStyle = "rgba(255,255,255,0.65)"; g.fillRect(wx, top, ww, bottom - top);
+  const level = (bottom - top) * Math.min(1, s.V / VESSEL.cap);
+  if (s.V > 0.5) { g.fillStyle = waterColor(s.Tw); g.fillRect(wx, bottom - level, ww, level); }
+  g.strokeStyle = "#b9b29c"; g.strokeRect(wx, top, ww, bottom - top);
+  /* lid, thermometer and stirrer */
+  g.fillStyle = "#e9e3cf"; g.fillRect(x - r - 16, y - h - 10, 2 * r + 32, 12);
+  g.fillStyle = "#d63b2f"; g.fillRect(x - 38, y - h - 90, 6, 140);
+  g.beginPath(); g.arc(x - 35, y - h + 52, 7, 0, 7); g.fill();
+  const sa = s.stirAngle || 0, sxo = Math.cos(sa) * 18;
+  g.strokeStyle = COL.steel; g.lineWidth = 4;
+  g.beginPath(); g.moveTo(x + 22 + sxo, y - h - 70); g.lineTo(x + 22 + sxo * 0.6, bottom - 6); g.stroke();
+  g.beginPath(); g.ellipse(x + 22 + sxo * 0.6, bottom - 8, 20, 5, 0, 0, 7); g.stroke();
+  g.fillStyle = "#33413d"; g.font = "600 14px " + css("--body"); g.textAlign = "center";
+  g.fillText("Calorímetro", x, y + 22);
+}
+
+function drawBath(s) {
+  const x = BATH.x, y = BATH.y;
+  /* tripod and burner */
+  g.strokeStyle = "#4b5563"; g.lineWidth = 5;
+  g.beginPath(); g.moveTo(x - 80, y + 80); g.lineTo(x - 70, y); g.moveTo(x + 80, y + 80); g.lineTo(x + 70, y); g.stroke();
+  g.fillStyle = "#374151"; g.fillRect(x - 18, y + 40, 36, 40);
+  if (s.P > 0) {
+    const f = s.P / 2000, fl = 18 + 40 * f;
+    const grd = g.createLinearGradient(0, y + 40 - fl, 0, y + 40);
+    grd.addColorStop(0, "rgba(59,130,246,0)"); grd.addColorStop(0.5, "rgba(59,130,246,0.75)"); grd.addColorStop(1, "rgba(250,204,21,0.9)");
+    g.fillStyle = grd; g.beginPath(); g.moveTo(x - 10, y + 40); g.quadraticCurveTo(x, y + 40 - fl * 1.3, x + 10, y + 40); g.fill();
+  }
+  /* pot */
+  g.fillStyle = "#9aa4ad"; g.strokeStyle = "#5f6b75"; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(x - 85, y - 120); g.lineTo(x - 80, y); g.lineTo(x + 80, y); g.lineTo(x + 85, y - 120); g.closePath(); g.fill(); g.stroke();
+  g.fillStyle = waterColor(s.Tb); g.fillRect(x - 78, y - 100, 156, 96);
+  if (s.Tb > 96) { /* bubbles */
+    g.fillStyle = "rgba(255,255,255,0.7)";
+    for (let i = 0; i < 9; i++) { const bx = x - 65 + ((i * 37 + s.t * 40) % 130), by = y - 10 - ((i * 23 + s.t * 60) % 85); g.beginPath(); g.arc(bx, by, 3 + (i % 3), 0, 7); g.fill(); }
+  }
+  /* bath thermometer */
+  g.fillStyle = "#d63b2f"; g.fillRect(x + 52, y - 190, 6, 150);
+  g.fillStyle = "#33413d"; g.font = "600 14px " + css("--body"); g.textAlign = "center";
+  g.fillText("Banho", x, y + 100);
+}
+
+function drawSample(s, mat) {
+  let x = s.sx, y = s.sy;
+  if (s.sample === "bath") { x = BATH.x - 10; y = BATH.y - 40; }
+  if (s.sample === "vessel") { x = VESSEL.x - 2; y = VESSEL.y - 36; }
+  /* string or tongs */
+  g.strokeStyle = "#6b7280"; g.lineWidth = 2;
+  if (s.sample === "bath") { g.beginPath(); g.moveTo(x, y - 20); g.lineTo(x, BATH.y - 200); g.lineTo(BATH.x - 100, BATH.y - 200); g.stroke(); }
+  if (s.sample === "held") { g.lineWidth = 4; g.beginPath(); g.moveTo(x - 10, y - 18); g.lineTo(x - 40, y - 110); g.moveTo(x + 10, y - 18); g.lineTo(x - 20, y - 112); g.stroke(); }
+  /* metal cylinder, glowing a little when hot */
+  const heat = Math.max(0, Math.min(1, (s.Ts - 40) / 60));
+  g.fillStyle = mat.color; g.strokeStyle = "rgba(0,0,0,0.35)"; g.lineWidth = 1.5;
+  g.beginPath(); g.roundRect ? g.roundRect(x - 16, y - 20, 32, 40, 5) : g.rect(x - 16, y - 20, 32, 40); g.fill(); g.stroke();
+  g.fillStyle = `rgba(234,88,12,${0.35 * heat})`; g.fillRect(x - 16, y - 20, 32, 40);
+  g.fillStyle = "rgba(255,255,255,0.35)"; g.fillRect(x - 11, y - 17, 6, 34);
+}
+
+function badge(x, y, text, color) {
+  g.font = "600 15px " + css("--mono");
+  const w = g.measureText(text).width + 16;
+  g.fillStyle = "rgba(17,24,22,0.82)"; g.beginPath(); g.roundRect ? g.roundRect(x - w / 2, y - 14, w, 26, 6) : g.rect(x - w / 2, y - 14, w, 26); g.fill();
+  g.fillStyle = color || "#ffffff"; g.textAlign = "center"; g.fillText(text, x, y + 5);
+}
+
+/* Student HUD: rounded instrument readings only. */
+function drawReadouts(s, teacher) {
+  if (teacher) return;
+  badge(VESSEL.x - 35, VESSEL.y - VESSEL.h - 105, s.V >= 1 ? shown(s.Tw).toFixed(1) + " °C" : "— °C", "#ffd7c2");
+  badge(BATH.x + 55, BATH.y - 205, shown(s.Tb).toFixed(1) + " °C", "#ffd7c2");
+  const bpos = s.beaker === "pour" ? BEAKER_POUR : BEAKER_HOME;
+  badge(bpos.x, bpos.y - 150, Math.round(s.beakerVol) + " mL", "#cfe8ff");
+  badge(VESSEL.x + 40, VESSEL.y + 48, Math.round(s.V) + " mL", "#cfe8ff");
+  if (s.stir > 0.05) badge(VESSEL.x + 100, VESSEL.y - VESSEL.h - 40, "mexendo", "#d9f5e8");
+  g.fillStyle = "rgba(17,24,22,0.7)"; g.font = "600 15px " + css("--mono"); g.textAlign = "left";
+  g.fillText("t = " + fmtTime(s.t) + (s.speed > 1 ? "  ⏩ 4×" : ""), 16, 26);
+}
+
+/* Teacher HUD: exact values, hidden quantities, the content of each vessel. */
+function drawTeacherHud(s) {
+  const panel = (x, y, lines) => {
+    g.font = "500 14px " + css("--mono");
+    const w = Math.max(...lines.map((l) => g.measureText(l[0]).width)) + 20, h = lines.length * 20 + 12;
+    g.fillStyle = "rgba(13,40,36,0.88)"; g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, 8) : g.rect(x, y, w, h); g.fill();
+    lines.forEach((l, i) => { g.fillStyle = l[1] || "#e6f4f1"; g.textAlign = "left"; g.fillText(l[0], x + 10, y + 22 + i * 20); });
+  };
+  panel(12, 12, [
+    ["BÉQUER", "#8fe3cf"],
+    ["restante " + s.beakerVol.toFixed(1) + " mL"],
+    ["despejado " + (400 - s.beakerVol).toFixed(1) + " mL"],
+    ["inclinação " + Math.round(s.tilt * 100) + "%"],
+  ]);
+  panel(360, 12, [
+    ["CALORÍMETRO", "#8fe3cf"],
+    ["água " + s.V.toFixed(1) + " mL · " + s.Tw.toFixed(2) + " °C"],
+    ["amostra " + (s.sample === "vessel" ? s.Ts.toFixed(2) + " °C" : "fora")],
+    ["derramado " + s.spill.toFixed(1) + " mL", s.spill > 0.5 ? "#ffb4a8" : null],
+    ["agitação " + Math.round(s.stir * 100) + "%"],
+  ]);
+  panel(700, 12, [
+    ["BANHO", "#8fe3cf"],
+    ["água " + s.Tb.toFixed(2) + " °C"],
+    ["chama " + s.P + " W"],
+    ["amostra " + (s.sample === "vessel" ? "no calorímetro" : s.Ts.toFixed(2) + " °C"), "#ffd7c2"],
+  ]);
+  g.fillStyle = "rgba(17,24,22,0.75)"; g.font = "600 15px " + css("--mono"); g.textAlign = "left";
+  g.fillText("REPLAY  t = " + fmtTime(s.t) + (s.speed > 1 ? "  (aluno acelerou 4×)" : ""), 16, H - 132 + 112);
+}
+
+/* ======================================================================
+ * Replay
+ * ==================================================================== */
+let rpPlaying = false, rpT = 0, rpLast = 0;
+function openReplay(a, who) {
+  replay = { a, frames: a.frames.map(stateOf), who };
+  rpT = 0; rpPlaying = false; $("rp-play").textContent = "▶ Reproduzir";
+  $("timeline").hidden = false; $("eval-card").hidden = false; $("events-card").hidden = false;
+  $("eval-title").textContent = who + " · " + a.grade;
+  const rows = evaluate(a);
+  const errTxt = a.error === null ? "—" : (a.error * 100).toFixed(1) + " %";
+  $("eval").innerHTML = `<dl class="notes">
+      <dt>Metal (sorteado)</dt><dd>${a.material}</dd>
+      <dt>c de referência</dt><dd>${a.cp_true} J/(kg·K)</dd>
+      <dt>c medido pelo aluno</dt><dd>${a.cp_measured ?? "—"} J/(kg·K)</dd>
+      <dt>Erro</dt><dd>${errTxt}</dd>
+      <dt>Duração</dt><dd>${fmtTime(a.duration)}</dd></dl>
+    <table class="eval"><thead><tr><th>Item</th><th>Meta</th><th>Feito</th></tr></thead><tbody>${rows.map((r) =>
+      `<tr><td>${r[0]}</td><td class="n">${r[1]}</td><td class="n">${r[2]} <span class="pill ${r[3]}">${r[3] === "ok" ? "ok" : r[3] === "warn" ? "atenção" : "erro"}</span></td></tr>`).join("")}</tbody></table>
+    <details><summary>Cálculo feito pelo MFL</summary><pre></pre></details>`;
+  $("eval").querySelector("pre").textContent = a.cp_program || "(o aluno não registrou a temperatura final)";
+  const ev = $("events"); ev.textContent = "";
+  for (const e of a.events) {
+    const li = document.createElement("li");
+    li.innerHTML = "<span></span><span></span>";
+    li.firstChild.textContent = fmtTime(e.t); li.lastChild.textContent = e.text;
+    li.addEventListener("click", () => { rpT = e.t; drawReplay(); });
+    ev.appendChild(li);
+  }
+  drawReplay();
+}
+
+function replayState(t) {
+  const f = replay.frames;
+  if (!f.length) return null;
+  let lo = 0, hi = f.length - 1;
+  if (t <= f[0].t) return f[0];
+  if (t >= f[hi].t) return f[hi];
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (f[mid].t <= t) lo = mid; else hi = mid; }
+  const a = f[lo], b = f[hi], u = (t - a.t) / Math.max(1e-9, b.t - a.t);
+  const s = { ...a };
+  for (const k of ["V", "Tw", "Ts", "Tb", "tilt", "sx", "sy", "stir", "stirAngle", "beakerVol", "spill"]) s[k] = lerp(a[k], b[k], u);
+  s.t = t;
+  return s;
+}
+
+function drawReplay() {
+  if (!replay) return;
+  const end = replay.frames.length ? replay.frames[replay.frames.length - 1].t : 0;
+  rpT = Math.max(0, Math.min(end, rpT));
+  const s = replayState(rpT);
+  if (s) drawScene(s, { teacher: true, material: MATERIALS.find((m) => m.name === replay.a.material) || MATERIALS[1] });
+  $("rp-pos").value = String(end ? Math.round(rpT / end * 1000) : 0);
+  $("rp-time").textContent = fmtTime(rpT) + " / " + fmtTime(end);
+  drawChart(end);
+}
+
+function drawChart(end) {
+  const c = $("chart"), x = c.getContext("2d"), w = c.width, h = c.height, pl = 60, pr = 16, pt = 14, pb = 26;
+  x.clearRect(0, 0, w, h);
+  const f = replay.frames; if (!f.length) return;
+  const X = (t) => pl + t / Math.max(1, end) * (w - pl - pr), Y = (T) => pt + (1 - (T - 10) / 95) * (h - pt - pb);
+  x.font = "14px " + css("--mono"); x.fillStyle = css("--muted"); x.strokeStyle = css("--rule"); x.lineWidth = 1; x.textAlign = "right";
+  for (const T of [20, 40, 60, 80, 100]) { x.beginPath(); x.moveTo(pl, Y(T)); x.lineTo(w - pr, Y(T)); x.stroke(); x.fillText(T + " °C", pl - 8, Y(T) + 5); }
+  const series = [["Tb", css("--heat"), "banho"], ["Ts", css("--warn"), "amostra"], ["Tw", css("--cold"), "água do calorímetro"]];
+  for (const [k, col] of series) {
+    x.strokeStyle = col; x.lineWidth = 2.5; x.beginPath();
+    f.forEach((s, i) => { if (k === "Tw" && s.V < 1) return; const px = X(s.t), py = Y(s[k]); i && !(k === "Tw" && f[i - 1].V < 1) ? x.lineTo(px, py) : x.moveTo(px, py); });
+    x.stroke();
+  }
+  /* event markers */
+  for (const e of replay.a.events) {
+    if (e.type === "chama" || e.type === "tempo") continue;
+    x.fillStyle = css("--accent"); x.beginPath(); x.arc(X(e.t), h - pb + 10, 4, 0, 7); x.fill();
+  }
+  x.strokeStyle = css("--ink"); x.lineWidth = 1.5; x.setLineDash([5, 4]); x.beginPath(); x.moveTo(X(rpT), pt); x.lineTo(X(rpT), h - pb); x.stroke(); x.setLineDash([]);
+  x.textAlign = "left"; let lx = pl + 8;
+  for (const [, col, name] of series) { x.fillStyle = col; x.fillRect(lx, pt + 2, 14, 4); x.fillStyle = css("--muted"); x.fillText(name, lx + 20, pt + 9); lx += 40 + x.measureText(name).width; }
+}
+
+$("rp-play").addEventListener("click", () => {
+  if (!replay) return;
+  const end = replay.frames[replay.frames.length - 1].t;
+  if (rpT >= end) rpT = 0;
+  rpPlaying = !rpPlaying; rpLast = performance.now();
+  $("rp-play").textContent = rpPlaying ? "❚❚ Pausar" : "▶ Reproduzir";
+});
+$("rp-pos").addEventListener("input", (e) => {
+  if (!replay) return;
+  const end = replay.frames[replay.frames.length - 1].t;
+  rpT = +e.target.value / 1000 * end; drawReplay();
+});
+$("chart").addEventListener("click", (e) => {
+  if (!replay) return;
+  const r = e.currentTarget.getBoundingClientRect(), end = replay.frames[replay.frames.length - 1].t;
+  rpT = Math.max(0, ((e.clientX - r.left) * 1300 / r.width - 60) / (1300 - 76)) * end; drawReplay();
+});
+
+/* ======================================================================
+ * Modes and main loop
+ * ==================================================================== */
+function setMode(m) {
+  mode = m;
+  $("mode-lab").setAttribute("aria-pressed", String(m === "lab"));
+  $("mode-replay").setAttribute("aria-pressed", String(m === "replay"));
+  $("side-lab").hidden = m !== "lab"; $("side-replay").hidden = m !== "replay";
+  $("timeline").hidden = m !== "replay" || !replay;
+  cv.style.cursor = m === "lab" ? "grab" : "default";
+  if (m === "replay") { loadAttempts(); if (replay) drawReplay(); else { g.clearRect(0, 0, W, H); drawScene(S, { teacher: true }); } }
+}
+$("mode-lab").addEventListener("click", () => setMode("lab"));
+$("mode-replay").addEventListener("click", () => setMode("replay"));
+
+function frame(now) {
+  if (mode === "lab") {
+    S.tilt += (S.tiltTarget - S.tilt) * 0.25;
+    if (Math.abs(S.tilt - S.tiltTarget) < 0.002) S.tilt = S.tiltTarget;
+    drawScene(S);
+    if (engineError) { badge(W / 2, H / 2, "Erro no modelo: veja o console", "#ffb4a8"); }
+  } else if (replay && rpPlaying) {
+    const dt = (now - rpLast) / 1000; rpLast = now;
+    rpT += dt * +$("rp-speed").value;
+    const end = replay.frames[replay.frames.length - 1].t;
+    if (rpT >= end) { rpT = end; rpPlaying = false; $("rp-play").textContent = "▶ Reproduzir"; }
+    drawReplay();
+  }
+  requestAnimationFrame(frame);
+}
+
+$("model-text").textContent = MODEL;
+try { const last = JSON.parse(localStorage.getItem("calorimetria-last") || "null"); if (last && last.frames) local.push(last); } catch (e) {}
+newExperiment();
+requestAnimationFrame(frame);
+
+(async () => {
+  try {
+    mfl = await MFL.create(Uint8Array.from(atob(WASM_B64), (c) => c.charCodeAt(0)));
+    mfl.addFile("calorimetro.mfl", MODEL);
+    setInterval(tick, TICK * 1000);
+  } catch (e) { engineError = String(e); console.error(e); }
+})();
+(async () => {
+  try {
+    if (!window.claude || !window.claude.use) return;
+    [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (user) { uid = await user.id(); isTeacher = (await user.isOwner()) || (await user.canEdit()); }
+    if (mode === "replay") loadAttempts();
+  } catch (e) { db = null; }
+})();
+</script>

@@ -1,0 +1,2 @@
+tests/language/imports/visibility.mfl:3:1: error: cannot assign to 'counter': it belongs to tests/language/imports/lib/uses_importer.mfl (declared at tests/language/imports/lib/uses_importer.mfl:1:1); only code in that file may change it
+tests/language/imports/lib/uses_importer.mfl:3:20: error: 'main_only' is declared in tests/language/imports/visibility.mfl, which this file does not import

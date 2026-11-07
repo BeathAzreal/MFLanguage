@@ -1,0 +1,8 @@
+# Acceptance: an index outside the array is a controlled run-time error
+# with its source position; output printed before it is kept.
+let speeds = [5 mm/s, 0.005 m/s, 10 mm/s]
+for i in 0..len(speeds) {
+    print(i, speeds[i])
+}
+print(speeds[3])
+print("not reached")

@@ -1,0 +1,4 @@
+tests/language/imports/missing.mfl:1:1: error: cannot read the imported file "lib/does_not_exist.mfl" (looked for 'tests/language/imports/lib/does_not_exist.mfl')
+tests/language/imports/missing.mfl:2:1: error: invalid import path "lib": the file name must end in .mfl
+tests/language/imports/missing.mfl:3:1: error: invalid import path "/etc/materials.mfl": absolute paths are not allowed; write the path relative to the importing file
+tests/language/imports/missing.mfl:4:1: error: invalid import path "lib\\steel.mfl": use '/' to separate directories (backslashes are not allowed)

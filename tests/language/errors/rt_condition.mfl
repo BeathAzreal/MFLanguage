@@ -1,0 +1,6 @@
+fn check(flag) {
+    if flag { return "yes" }
+    return "no"
+}
+print(check(true))
+print(check(1))

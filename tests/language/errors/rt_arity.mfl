@@ -1,0 +1,3 @@
+fn one(x) { return x }
+fn call_with_two(f) { return f(1, 2) }
+print(call_with_two(one))

@@ -1,6 +1,8 @@
 # Scientific Validation Plan — Draft 0
 
-> **Status:** plan. None of the stages below has been executed yet.
+> **Status:** stage 1 (heat input, v0.1/v0.2) and the 1D part of stages 3–4
+> (explicit solver verified against the analytical slab solution, v0.3,
+> `heat-conduction.md` §11) are done. The other stages are plans.
 
 MFL's first scientific domain is **arc welding**, specifically heat transfer
 in **MIG/MAG (GMAW)**. Validation follows the usual distinction:
@@ -53,6 +55,12 @@ Rosenthal quasi-steady solutions for thin plates (2D line source) and thick
 plates (3D point source) as analytical references; numerical moving-source
 solver on structured grids. **Acceptance:** agreement with Rosenthal far from
 the source (where its singularity is irrelevant).
+
+> **Status (v0.4).** The analytical references are done: the `welding`
+> module computes both Rosenthal fields, t8/5 (closed forms and EN 1011-2),
+> exact peak temperatures and fused-zone/HAZ widths, verified in
+> `tests/numerical/test_welding.c` (`docs/welding.md` §4). The numerical
+> moving-source solver is not implemented yet.
 
 ## Stage 6 — Goldak double-ellipsoid model
 
