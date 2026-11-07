@@ -10,13 +10,15 @@ that students, researchers and engineers can write mathematical models, test
 hypotheses and run reproducible simulations — for undergraduate research
 (IC), final-year projects (TCC), graduate work and industrial applications.
 
-> ⚠️ **Early stage (pre-alpha, v0.3).** The interpreter runs functions,
+> ⚠️ **Early stage (pre-alpha, v0.4).** The interpreter runs functions,
 > control flow, arrays and gradually typed code with physical units,
 > dimensional analysis, absolute temperatures and unit conversion; it has
 > modules (`import`), a `numerical` module and a verified **1D transient
 > heat conduction solver** with CSV/JSON export, usable from MFL, from the
-> `mfl` command and from C. Welding models (moving heat sources, 2D/3D)
-> are **planned, not implemented**. See [Current status](#current-status).
+> `mfl` command and from C. The `welding` module provides analytical
+> Rosenthal and EN 1011-1/-2 models, with named arguments and a web
+> package for applications. Numerical moving heat sources and Goldak
+> remain planned. See [Current status](#current-status).
 
 ---
 
@@ -180,7 +182,7 @@ print(welding.peak_thin(power: 5 kW, speed: 5 mm/s, thickness: 10 mm,
 | Modules: `import "file.mfl"` and `import math` / `numerical` / `heat` | **Implemented** (v0.3) |
 | `numerical` module: uniform meshes, sum, mean (dimension-checked) | **Implemented** (v0.3) |
 | 1D transient heat conduction (FTCS), CSV/JSON export, CLI and C API | **Implemented** (v0.3) — [`docs/heat-conduction.md`](docs/heat-conduction.md) |
-| `welding` module (moving sources, 2D/3D) | Planned |
+| `welding` module: analytical Rosenthal fields, EN 1011-1/-2, t8/5 and HAZ width | **Implemented** (v0.4) — [`docs/welding.md`](docs/welding.md) |
 | Embeddable C API for programs and games | **Implemented** — [`docs/embedding.md`](docs/embedding.md) |
 | WebAssembly target (runs in the browser, same results as the CLI) | **Implemented** — [`wasm/README.md`](wasm/README.md) |
 | Bindings to C/C++/Fortran scientific libraries | Future |
@@ -340,7 +342,7 @@ materials, welding, manufacturing and numerical methods.
 - ✅ Units: SI base and derived, prefixes, min/h/L/bar/percent, absolute temperatures in degC, exact conversions
 - ✅ C embedding API (`include/mfl/mfl.h`, `docs/embedding.md`), usable from C and C++, with run-time errors and an instruction limit
 - ✅ Conformance tests: `480 J/mm` (v0.1) and the v0.2 acceptance demonstration
-- ✅ Modules: `import "file.mfl"` (each file once, cycles and missing files reported) and C modules `math`, `numerical`, `heat`
+- ✅ Modules: `import "file.mfl"` (each file once, cycles and missing files reported) and C modules `math`, `numerical`, `heat`, `welding`
 - ✅ 1D transient heat conduction: FTCS with stability check, CSV/JSON export (atomic, with completion marker), same solver from MFL, the CLI and C
 - ✅ CI on Linux (GCC, Clang), macOS, Windows with warnings as errors; ASan + UBSan; packages with a smoke test
 - ⏳ `break`/`continue`, closures, a garbage collector for arrays

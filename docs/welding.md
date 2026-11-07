@@ -148,9 +148,9 @@ each pass:
 ```ts
 const s = mfl.createState();
 s.addSource("models/weld.mfl", weldModel);       // uses `import welding`
-const weld = s.compile("models/weld.mfl");
 s.setNumber("U", pass.volts, "V"); s.setNumber("I", pass.amps, "A");
 s.setNumber("v", pass.speed, "mm/s"); s.setNumber("d", plate.thickness, "mm");
+const weld = s.compile("models/weld.mfl");
 weld.run();
 report.t85 = s.getNumber("t85", "s");
 report.hazWidth = s.getNumber("haz_width", "mm");

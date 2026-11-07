@@ -27,11 +27,10 @@ const mfl = await create(await fetch(wasmUrl));
 const s = mfl.createState();
 s.addSource("models/materials/steel.mfl", steelText);  // in memory: no files
 s.addSource("models/weld.mfl", weldText);              // may import "materials/steel.mfl"
-const weld = s.compile("models/weld.mfl");             // once; MflError with file:line:col
-
 s.setNumber("U", 25, "V");                             // named inputs with units
 s.setNumber("I", 250, "A");
 s.setNumber("v", 5, "mm/s");
+const weld = s.compile("models/weld.mfl");             // inputs registered before compilation
 weld.run({ maxSteps: 1_000_000 });                     // every time the player changes something
 const t85 = s.getNumber("t85", "s");                   // named results, in any unit
 const Q = s.getNumber("Q", "kJ/mm");
