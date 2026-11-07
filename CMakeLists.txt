@@ -26,6 +26,7 @@ add_library(mfl_numerical STATIC
     modules/numerical/vector.c
     modules/numerical/heat1d.c
     modules/numerical/heat1d_export.c
+    modules/numerical/welding.c
     src/runtime/number.c
 )
 target_include_directories(mfl_numerical
@@ -206,6 +207,10 @@ if(MFL_BUILD_TESTS)
     target_link_libraries(test_heat1d PRIVATE mfl_numerical)
     mfl_set_warnings(test_heat1d)
     add_test(NAME numerical_heat1d COMMAND test_heat1d)
+    add_executable(test_welding tests/numerical/test_welding.c)
+    target_link_libraries(test_welding PRIVATE mfl_numerical)
+    mfl_set_warnings(test_welding)
+    add_test(NAME numerical_welding COMMAND test_welding)
     add_executable(test_heat1d_export tests/numerical/test_heat1d_export.c)
     target_link_libraries(test_heat1d_export PRIVATE mfl_numerical)
     mfl_set_warnings(test_heat1d_export)
