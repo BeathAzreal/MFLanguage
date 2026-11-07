@@ -1,0 +1,68 @@
+{
+  "name": "MFL",
+  "scopeName": "source.mfl",
+  "patterns": [
+    {
+      "name": "comment.line.number-sign.mfl",
+      "match": "#.*$"
+    },
+    {
+      "name": "string.quoted.double.mfl",
+      "begin": "\"",
+      "end": "\"|$",
+      "patterns": [
+        {
+          "name": "constant.character.escape.mfl",
+          "match": "\\\\[nt\"\\\\]"
+        },
+        {
+          "name": "invalid.illegal.escape.mfl",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "match": "\\b(fn)[ \\t]+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.function.mfl"
+        },
+        "2": {
+          "name": "entity.name.function.mfl"
+        }
+      }
+    },
+    {
+      "name": "storage.type.mfl",
+      "match": "\\b(?:let|var|fn)\\b"
+    },
+    {
+      "name": "keyword.control.mfl",
+      "match": "\\b(?:if|else|while|for|in|return|import)\\b"
+    },
+    {
+      "name": "keyword.operator.logical.mfl",
+      "match": "\\b(?:and|or|not)\\b"
+    },
+    {
+      "name": "constant.language.mfl",
+      "match": "\\b(?:true|false|nil)\\b"
+    },
+    {
+      "name": "support.type.mfl",
+      "match": "\\b(?:Number|Bool|String|Quantity|Array)\\b"
+    },
+    {
+      "name": "support.function.mfl",
+      "match": "\\b(?:print|len|push|to|value_in)\\b(?=[ \\t]*\\()"
+    },
+    {
+      "name": "constant.numeric.mfl",
+      "match": "\\b[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\\b"
+    },
+    {
+      "name": "keyword.operator.mfl",
+      "match": "->|\\.\\.|==|!=|<=|>=|[+*/%^=<>-]"
+    }
+  ]
+}
