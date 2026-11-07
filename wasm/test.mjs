@@ -60,6 +60,7 @@ for (const [path, expected] of [
     ["examples/thermal/bar_heated_end.mfl", "tests/language/run/bar_heated_end.expected"],
     ["tests/language/heat/conformance_heat.mfl", "tests/language/heat/conformance_heat.expected"],
     ["examples/lab/check_model.mfl", "tests/language/run/lab_model.expected"],
+    ["examples/welding/thermal_cycle.mfl", "tests/language/run/thermal_cycle.expected"],
 ]) {
     check(path, path, read(expected), "", 0);
 }

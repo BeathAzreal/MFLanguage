@@ -193,6 +193,11 @@ static int normalise(const char *in, char *out, size_t size)
     return 1;
 }
 
+int mfl_normalise_path(const char *in, char *out, size_t size)
+{
+    return normalise(in, out, size);
+}
+
 /* Checks the text of an import string (without quotes). Returns NULL if
  * valid, or the reason. */
 static const char *check_import_path(const char *p, size_t n)

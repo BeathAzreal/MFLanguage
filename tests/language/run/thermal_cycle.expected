@@ -1,0 +1,10 @@
+heat input: 1 kJ/mm | net power: 5 kW
+plate 10 mm is below the transition thickness 14.658605275561131 mm -> 2-D heat flow (thin plate)
+t8/5 EN 1011-2 (steel): 11.363566321499013 s
+t8/5 Rosenthal thick:   4.250933309078401 s
+t8/5 Rosenthal thin:    14.23768467296822 s
+peak at 5 mm from the centre line: 938.4618351258315 degC
+peak at 8 mm from the centre line: 609.7810967374959 degC
+peak at 12 mm from the centre line: 417.5479924559809 degC
+peak at 20 mm from the centre line: 259.96959670898786 degC
+fused zone half-width: 2.9080258782795396 mm | HAZ width: 3.708824690602919 mm

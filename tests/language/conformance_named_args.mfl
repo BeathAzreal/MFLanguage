@@ -1,0 +1,21 @@
+# v0.4: named arguments.
+import numerical
+fn heat_input(voltage: Quantity[V], current: Quantity[A], speed: Quantity[mm/s],
+              efficiency: Number) -> Quantity[J/mm] {
+    return efficiency * voltage * current / speed
+}
+# By position, by name in any order, and mixed (positional first).
+print(heat_input(20 V, 150 A, 5 mm/s, 0.8).to(J/mm))
+print(heat_input(speed: 5 mm/s, efficiency: 0.8, current: 150 A, voltage: 20 V).to(J/mm))
+print(heat_input(20 V, 150 A, efficiency: 0.8, speed: 5 mm/s).to(J/mm))
+# Unannotated functions and module functions too.
+fn ratio(a, b) { return a / b }
+print(ratio(b: 4, a: 2))
+print(numerical.linspace(count: 3, start: 0 mm, stop: 1 cm))
+# A function value whose signature is known keeps its parameter names.
+let f = ratio
+print(f(b: 8, a: 2))
+# Arguments are evaluated in parameter order.
+fn show(x) { print("evaluating", x)
+    return x }
+print(ratio(b: show(2), a: show(1)))

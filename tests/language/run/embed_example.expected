@@ -1,4 +1,4 @@
-MFL 0.3.0-dev embedding example
+MFL 0.4.0-dev embedding example
 
 setting                 U [V]  I [A]  v [mm/s]     P [kW]    Q [kJ/mm]
 MIG/MAG, thin sheet      18.0  120.0       8.0      1.728        0.216

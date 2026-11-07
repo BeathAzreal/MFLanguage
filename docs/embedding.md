@@ -125,7 +125,31 @@ MIG/MAG, thick plate     28.0  280.0       4.0      6.272        1.568
 - Fix in v0.3: a top-level degC variable read with `mfl_get_number(S,
   name, "K", &v)` now includes the 273.15 K offset.
 
-## 7. Not available yet
+## 7. Sources held in memory (v0.4)
+
+A host that ships its models inside the application (a game, a web page)
+gives the state the files instead of letting it open them:
+
+```c
+mfl_add_source(S, "models/weld.mfl", weld_text, strlen(weld_text));
+mfl_add_source(S, "models/steel.mfl", steel_text, strlen(steel_text)); /* imported by weld.mfl */
+MflScript *weld = mfl_script_compile_source(S, "models/weld.mfl");
+mfl_set_number(S, "U", 25, "V");
+mfl_script_run(S, weld);           /* run again after changing the inputs */
+mfl_get_number(S, "t85", "s", &t85);
+```
+
+- Paths are normalised (`a/./b/../c.mfl` is `a/c.mfl`); adding a path again
+  replaces its text. `mfl_clear_sources(S)` removes them all.
+- `import "file.mfl"` in a script compiled from a source looks among the
+  sources first and, only if `mfl_set_file_imports(S, 1)` was called, on
+  disk. Without file imports enabled, nothing is ever read from disk.
+- Text is copied: the host may free its buffers after `mfl_add_source`.
+- In the browser the same API is `mfl.createState()` of the `mfl-wasm`
+  package (`addSource`, `setNumber`, `compile(path).run()`, `getNumber`);
+  see `wasm/README.md`.
+
+## 8. Not available yet
 
 - A host-supplied allocator (only a memory limit for now).
 - Strings, booleans and arrays as inputs/outputs through the API (scripts
@@ -133,5 +157,3 @@ MIG/MAG, thick plate     28.0  280.0       4.0      6.272        1.568
 - Calling MFL functions from C, or C functions from MFL (MFL functions
   exist since v0.2, but only scripts can call them).
 - Reusing results between runs other than through inputs.
-- WebAssembly build (planned; the core already avoids threads, files and
-  platform-specific code in the interpreter).

@@ -8,7 +8,7 @@ if x > 1 {
 }
 let ok = 1
 let w = 5 @ 2
-let s = 5 mm/(x + 1)
+let s = 5 mm/(x y)
 let u = )
 print(1 2)
 fn f() { return 1 }

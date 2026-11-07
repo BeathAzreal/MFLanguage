@@ -1,4 +1,4 @@
-tests/language/errors/compile_modules.mfl:4:1: error: unknown module 'welding' (available modules: math, numerical, heat; to import a file, write import "welding.mfl")
+tests/language/errors/compile_modules.mfl:4:1: error: unknown module 'fluids' (available modules: math, numerical, heat, welding; to import a file, write import "fluids.mfl")
 tests/language/errors/compile_modules.mfl:5:1: error: module 'numerical' is already imported at 2:1
 tests/language/errors/compile_modules.mfl:6:33: error: argument 2 of 'numerical.linspace' ('stop') must be Quantity[m] (like argument 1), found Quantity[s]
 tests/language/errors/compile_modules.mfl:7:23: error: numerical.sum cannot add absolute temperatures (degC); convert them with .to(K) first

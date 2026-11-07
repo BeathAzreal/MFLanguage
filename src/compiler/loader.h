@@ -83,6 +83,11 @@ int mfl_load(const char *source, size_t length, const char *name, MflReadSourceF
 
 void mfl_load_free(MflLoadResult *result);
 
+/* Lexical normalisation of a path, as used to identify files ('.' and
+ * '..' segments resolved, separators become '/'). Returns 0 if it does not
+ * fit in size bytes. */
+int mfl_normalise_path(const char *in, char *out, size_t size);
+
 /* FNV-1a 64-bit hash of a byte string. */
 unsigned long long mfl_fnv1a64(const char *data, size_t length);
 

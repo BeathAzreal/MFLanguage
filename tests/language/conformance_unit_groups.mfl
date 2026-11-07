@@ -1,0 +1,19 @@
+# v0.3: parentheses after a unit, and '->' on the next line.
+let T = 300 K
+let T_amb = 293.15 K
+
+# A group with an expression ends the quantity: multiplication as it reads.
+print(6 W/K * (T - T_amb))
+print(3 J/(kg*K) * (T - T_amb))
+print(10 mm/(2 + 3))
+# Groups made only of units are still units.
+print(45 W/(m*K), 2 kg*m^2/(s^2*K), 5 m/(s^-1))
+print(5 m / (2 s))
+
+# The return type may start the line after the parameters.
+fn heat_loss(h: Quantity[W/K],
+             dT: Quantity[K])
+    -> Quantity[W] {
+    return h * dT
+}
+print(heat_loss(6 W/K, T - T_amb))

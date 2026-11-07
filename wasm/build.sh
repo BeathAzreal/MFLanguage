@@ -25,9 +25,9 @@ SOURCES=(
     src/version.c src/lexer/lexer.c src/parser/ast.c src/parser/parser.c
     src/runtime/arena.c src/runtime/units.c src/runtime/number.c
     src/compiler/checker.c src/compiler/chunk.c src/compiler/compiler.c
-    src/compiler/loader.c src/modules/natives.c src/modules/heat_natives.c
+    src/api/mfl_api.c src/compiler/loader.c src/modules/natives.c src/modules/heat_natives.c src/modules/welding_natives.c
     src/vm/vm.c
-    modules/numerical/vector.c modules/numerical/heat1d.c modules/numerical/heat1d_export.c
+    modules/numerical/vector.c modules/numerical/heat1d.c modules/numerical/heat1d_export.c modules/numerical/welding.c
     src/wasm/mfl_wasm.c
 )
 

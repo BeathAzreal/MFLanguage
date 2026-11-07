@@ -940,12 +940,121 @@ static MflExpr *nth_arg(MflExpr *call, int n)
     return a;
 }
 
+static int has_named_args(const MflExpr *call)
+{
+    const MflExpr *a;
+    for (a = call->as.call.args; a != NULL; a = a->next) {
+        if (a->label.length > 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Named arguments (v0.4): matches `name: value` arguments to the
+ * parameters `names[0 .. arity)` and relinks the arguments in parameter
+ * order (so they are also evaluated in parameter order). Positional
+ * arguments fill the first parameters. Returns 0 after reporting an
+ * error. */
+static int bind_named_args(Checker *c, MflExpr *call, const char *fname, const MflText *names,
+                           int arity)
+{
+    MflExpr *slots[64];
+    MflExpr *a;
+    MflExpr *next;
+    int npos = 0;
+    int i;
+    int ok = 1;
+    char list[400];
+    size_t pos = 0;
+
+    if (!has_named_args(call)) {
+        return 1;
+    }
+    if (arity > 64) {
+        error_at(c, call, "named arguments are limited to functions of at most 64 parameters");
+        return 0;
+    }
+    list[0] = '\0';
+    for (i = 0; i < arity && pos < sizeof list; i++) {
+        int w = snprintf(list + pos, sizeof list - pos, "%s%.*s", i ? ", " : "", TEXT_ARG(names[i]));
+        pos += w > 0 ? (size_t)w : 0;
+    }
+    for (i = 0; i < arity; i++) {
+        slots[i] = NULL;
+    }
+    for (a = call->as.call.args; a != NULL; a = a->next) {
+        if (a->label.length == 0) {
+            if (npos >= arity) {
+                error_at(c, a, "'%s' takes %d argument%s, but more were given", fname, arity,
+                         arity == 1 ? "" : "s");
+                return 0;
+            }
+            slots[npos++] = a;
+            continue;
+        }
+        for (i = 0; i < arity; i++) {
+            if (text_eq(names[i], a->label)) {
+                break;
+            }
+        }
+        if (i == arity) {
+            error_at(c, a, "'%s' has no parameter '%.*s' (its parameters are: %s)", fname,
+                     TEXT_ARG(a->label), list);
+            ok = 0;
+        } else if (slots[i] != NULL) {
+            error_at(c, a, "argument '%.*s' of '%s' is given twice", TEXT_ARG(a->label), fname);
+            ok = 0;
+        } else {
+            slots[i] = a;
+        }
+    }
+    for (i = 0; i < arity && ok; i++) {
+        if (slots[i] == NULL) {
+            error_at(c, call, "missing argument '%.*s' of '%s' (its parameters are: %s)",
+                     TEXT_ARG(names[i]), fname, list);
+            ok = 0;
+        }
+    }
+    if (!ok) {
+        return 0;
+    }
+    /* relink in parameter order */
+    for (a = call->as.call.args; a != NULL; a = next) {
+        next = a->next;
+        a->next = NULL;
+    }
+    call->as.call.args = slots[0];
+    for (i = 0; i + 1 < arity; i++) {
+        slots[i]->next = slots[i + 1];
+    }
+    return 1;
+}
+
+static int reject_named_args(Checker *c, MflExpr *call, const char *why)
+{
+    const MflExpr *a;
+    for (a = call->as.call.args; a != NULL; a = a->next) {
+        if (a->label.length > 0) {
+            error_at(c, a, "named argument '%.*s': %s", TEXT_ARG(a->label), why);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* Arguments against a known signature. */
 static MflType check_call_sig(Checker *c, MflExpr *e, const MflFnSig *sig)
 {
     MflExpr *a;
     int i = 0;
     int ok = 1;
+    char fname[64];
+    snprintf(fname, sizeof fname, "%.*s", TEXT_ARG(sig->name));
+    if (!bind_named_args(c, e, fname, sig->param_names, sig->arity)) {
+        check_args(c, e);
+        return fail(e);
+    }
     check_args(c, e);
     if (e->as.call.argc != sig->arity) {
         error_at(c, e, "'%.*s' takes %d argument%s, but %d %s given", TEXT_ARG(sig->name),
@@ -983,6 +1092,10 @@ static MflType check_builtin_call(Checker *c, MflExpr *e, int builtin)
     callee->ref_kind = MFL_REF_BUILTIN;
     callee->ref_index = builtin;
     callee->type = make_type(MFL_TYPE_UNCHECKED);
+    if (reject_named_args(c, e, "built-in functions take positional arguments only")) {
+        check_args(c, e);
+        return fail(e);
+    }
     check_args(c, e);
     if (builtin == MFL_BUILTIN_PRINT) {
         return set_type(e, make_type(MFL_TYPE_NIL));
@@ -1162,6 +1275,12 @@ static int check_native_arg(Checker *c, const MflNative *n, int i, MflExpr *a, c
             return 0;
         }
         return 1;
+    case MFL_NP_STRING:
+        if (t.kind != MFL_TYPE_STRING) {
+            native_arg_error(c, a, n, i, "a String");
+            return 0;
+        }
+        return 1;
     case MFL_NP_TEMPERATURE:
         if (!is_temperature(t)) {
             native_arg_error(c, a, n, i, "an absolute temperature (K or degC)");
@@ -1222,6 +1341,21 @@ static MflType check_native_call(Checker *c, MflExpr *e, int idx)
 
     callee->ref_kind = MFL_REF_NATIVE;
     callee->ref_index = idx;
+    if (has_named_args(e) && n->result != MFL_NR_CONSTANT) {
+        MflText names[MFL_NATIVE_MAX_ARGS];
+        char fname[64];
+        int k;
+        for (k = 0; k < n->arity; k++) {
+            names[k].start = n->params[k].name;
+            names[k].length = strlen(n->params[k].name);
+        }
+        snprintf(fname, sizeof fname, "%s.%s", n->module, n->name);
+        if (!bind_named_args(c, e, fname, names, n->arity)) {
+            check_args(c, e);
+            return fail(e);
+        }
+        first = e->as.call.args;
+    }
     check_args(c, e);
     if (n->result == MFL_NR_CONSTANT) {
         error_at(c, e, "'%s.%s' is a constant, not a function: write %s.%s without '()'", n->module,
@@ -1288,6 +1422,9 @@ static MflType check_call(Checker *c, MflExpr *e)
         }
     }
     if (callee->kind == MFL_EXPR_MEMBER && is_method_name(callee->as.member.name)) {
+        if (reject_named_args(c, e, "'.to' and '.value_in' take a unit, not named arguments")) {
+            return fail(e);
+        }
         return check_method(c, e);
     }
     if (callee->kind == MFL_EXPR_IDENT && find_local(c, callee->as.text) == NULL &&
@@ -1309,6 +1446,12 @@ static MflType check_call(Checker *c, MflExpr *e)
         return check_call_sig(c, e, t.fn);
     }
     if (is_any(t)) {
+        if (reject_named_args(c, e, "the function called here is only known when the program "
+                                    "runs, so its parameter names are not; pass the arguments "
+                                    "by position")) {
+            check_args(c, e);
+            return fail(e);
+        }
         check_args(c, e); /* arity and parameter types are checked when it runs */
         return set_type(e, make_type(MFL_TYPE_ANY));
     }

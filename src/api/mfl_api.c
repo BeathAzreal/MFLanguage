@@ -60,8 +60,16 @@ struct MflState {
     int       error_oom; /* the message itself could not be stored */
     unsigned long long max_steps;
     int       file_imports; /* import "file.mfl" allowed (v0.3) */
+    struct Source *sources; /* in-memory sources (v0.4), by normalised path */
+    size_t    source_count;
     MflHeat1D *last_heat;   /* simulation of the last successful run (v0.3) */
 };
+
+typedef struct Source {
+    char  *path;
+    char  *text;
+    size_t length;
+} Source;
 
 struct MflHeat1D {
     MflState           *S;
@@ -335,6 +343,7 @@ void mfl_state_free(MflState *S)
     }
     mfl_clear_inputs(S);
     free(S->inputs);
+    mfl_clear_sources(S);
     free_results(S);
     if (S->last_heat != NULL) {
         S->last_heat->state_owned = 0;
@@ -468,6 +477,39 @@ void mfl_script_free(MflScript *script)
     free(script);
 }
 
+static const Source *find_source(const MflState *S, const char *path)
+{
+    char key[1100];
+    size_t i;
+    if (!mfl_normalise_path(path, key, sizeof key)) {
+        return NULL;
+    }
+    for (i = 0; i < S->source_count; i++) {
+        if (strcmp(S->sources[i].path, key) == 0) {
+            return &S->sources[i];
+        }
+    }
+    return NULL;
+}
+
+/* Imports: in-memory sources first, then files when the host allowed them. */
+static int read_source(void *ctx, const char *path, char **data, size_t *length)
+{
+    const MflState *S = (const MflState *)ctx;
+    const Source *src = find_source(S, path);
+    if (src != NULL) {
+        char *copy = (char *)malloc(src->length + 1);
+        if (copy == NULL) {
+            return 0;
+        }
+        memcpy(copy, src->text, src->length + 1);
+        *data = copy;
+        *length = src->length;
+        return 1;
+    }
+    return S->file_imports && mfl_read_source_file(NULL, path, data, length);
+}
+
 static MflScript *compile_script(MflState *S, const char *source, size_t length,
                                  const char *source_name, MflStatus *status)
 {
@@ -517,8 +559,9 @@ static MflScript *compile_script(MflState *S, const char *source, size_t length,
         decl[i].type.dim = S->inputs[i].dim;
     }
 
-    if (!mfl_load(sc->source, length, sc->name, S->file_imports ? mfl_read_source_file : NULL,
-                  NULL, limit, &sc->load)) {
+    if (!mfl_load(sc->source, length, sc->name,
+                  S->file_imports || S->source_count > 0 ? read_source : NULL, S, limit,
+                  &sc->load)) {
         if (sc->load.out_of_memory) {
             goto oom;
         }
@@ -563,6 +606,89 @@ fail_program:
     free(decl);
     mfl_script_free(sc);
     return NULL;
+}
+
+MflStatus mfl_add_source(MflState *S, const char *path, const char *text, size_t length)
+{
+    char key[1100];
+    Source *slot;
+    char *copy;
+    if (S == NULL) {
+        return MFL_ERR_ARGUMENT;
+    }
+    error_clear(S);
+    if (path == NULL || (text == NULL && length > 0)) {
+        return fail(S, MFL_ERR_ARGUMENT, "path or text is NULL");
+    }
+    if (!mfl_normalise_path(path, key, sizeof key)) {
+        return fail(S, MFL_ERR_ARGUMENT, "source path is too long");
+    }
+    copy = (char *)malloc(length + 1);
+    if (copy == NULL) {
+        return fail(S, MFL_ERR_MEMORY, "out of memory");
+    }
+    if (length > 0) {
+        memcpy(copy, text, length);
+    }
+    copy[length] = '\0';
+    slot = (Source *)find_source(S, key);
+    if (slot != NULL) {
+        free(slot->text);
+        slot->text = copy;
+        slot->length = length;
+        return MFL_OK;
+    }
+    slot = (Source *)realloc(S->sources, (S->source_count + 1) * sizeof *slot);
+    if (slot == NULL) {
+        free(copy);
+        return fail(S, MFL_ERR_MEMORY, "out of memory");
+    }
+    S->sources = slot;
+    slot = &S->sources[S->source_count];
+    slot->path = dup_string(key);
+    if (slot->path == NULL) {
+        free(copy);
+        return fail(S, MFL_ERR_MEMORY, "out of memory");
+    }
+    slot->text = copy;
+    slot->length = length;
+    S->source_count++;
+    return MFL_OK;
+}
+
+void mfl_clear_sources(MflState *S)
+{
+    size_t i;
+    if (S == NULL) {
+        return;
+    }
+    for (i = 0; i < S->source_count; i++) {
+        free(S->sources[i].path);
+        free(S->sources[i].text);
+    }
+    free(S->sources);
+    S->sources = NULL;
+    S->source_count = 0;
+}
+
+MflScript *mfl_script_compile_source(MflState *S, const char *path)
+{
+    const Source *src;
+    MflStatus st;
+    if (S == NULL) {
+        return NULL;
+    }
+    error_clear(S);
+    if (path == NULL) {
+        fail(S, MFL_ERR_ARGUMENT, "path is NULL");
+        return NULL;
+    }
+    src = find_source(S, path);
+    if (src == NULL) {
+        fail(S, MFL_ERR_NOT_FOUND, "no source '%.200s' was added with mfl_add_source", path);
+        return NULL;
+    }
+    return compile_script(S, src->text, src->length, src->path, &st);
 }
 
 MflScript *mfl_script_compile(MflState *S, const char *source, size_t length,

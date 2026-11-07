@@ -147,14 +147,17 @@ jobs:
         run: wasm/build.sh
       - name: Golden tests on the WebAssembly build
         run: node wasm/test.mjs
+      - name: npm package (ESM, CommonJS, state API, TypeScript types)
+        run: |
+          python3 wasm/package.py
+          node wasm/test_package.mjs
+          wasm/check_types.sh
       - name: Upload the browser build
         uses: actions/upload-artifact@v4
         with:
           name: mfl-wasm
           path: |
-            wasm/dist/mfl.wasm
-            wasm/mfl.js
-            wasm/README.md
+            wasm/dist/npm/
           if-no-files-found: error
 
   # AddressSanitizer + UndefinedBehaviorSanitizer (and LeakSanitizer) over

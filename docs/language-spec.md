@@ -63,6 +63,18 @@ let r = a
 - b                       # two statements: `a`, then `-b`
 ```
 
+**Exception (v0.3): `->`.** The return type of a function may start the
+line after its parameter list (blank and comment lines may come between).
+`->` cannot begin a statement, so this never changes a valid program:
+
+```mfl
+fn heat_input(U: Quantity[V], I: Quantity[A],
+              v: Quantity[mm/s])
+    -> Quantity[J/mm] {
+    return 0.8 * U * I / v
+}
+```
+
 ## 3. Lexical elements
 
 | Token kind | Rule | Examples |
@@ -225,8 +237,9 @@ Binding rules (the parser applies them; `mfl --ast` shows the result):
 | Source | Tree | Why |
 |--------|------|-----|
 | `5 mm/s` | `(quantity 5 (/ mm s))` | `/` followed by a name continues the unit |
-| `45 W/(m*K)` | `(quantity 45 (/ W (* m K)))` | `(` + name after `/` or `*` opens a unit group |
-| `5 m / (2 s)` | `(/ (quantity 5 m) (quantity 2 s))` | `(` + number: ordinary division |
+| `45 W/(m*K)` | `(quantity 45 (/ W (* m K)))` | `(` after `/` or `*` opens a unit group when **everything up to its `)`** is a unit |
+| `5 m / (2 s)` | `(/ (quantity 5 m) (quantity 2 s))` | the group holds a number: ordinary division |
+| `6 W/K * (T - T_amb)` | `(* (quantity 6 (/ W K)) (- T T_amb))` | the group holds an operator that units do not use: the quantity ends (v0.3) |
 | `2 m^-2` | `(quantity 2 (^ m (- 2)))` | integer exponent, optional sign |
 | `5 mm * 2` | `(* (quantity 5 mm) 2)` | `*` followed by a number ends the unit |
 | `5 mm / t` | `(quantity 5 (/ mm t))` | **`t` is read as a unit**, not a variable |
@@ -234,8 +247,13 @@ Binding rules (the parser applies them; `mfl --ast` shows the result):
 | `5 mm.to(m)` | `(call (. (quantity 5 mm) to) m)` | `.` ends the unit |
 
 So, in a quantity literal, `/` and `*` bind to the unit: `5 mm/s` is five
-millimetres per second, not `5 mm` divided by a variable `s`. To divide or
-multiply a quantity by a variable, put the quantity in parentheses. Unit
+millimetres per second, not `5 mm` divided by a variable `s`. A
+parenthesised group after `/` or `*` belongs to the unit only if it
+contains nothing but unit names, `*`, `/`, nested parentheses and integer
+exponents; anything else (`+`, `-` between terms, numbers, calls, `.to`)
+ends the quantity, so `6 W/K * (T - T_amb)` multiplies as it reads. To
+divide or multiply a quantity by a single variable, put the quantity in
+parentheses: `(5 mm) / t`. Unit
 symbols live in their own namespace, so a variable named `s` does not
 shadow the second.
 
@@ -328,6 +346,17 @@ fn name(p1: T1, p2, ...) -> R {    # annotations optional
   from other functions (recursion and mutual recursion are allowed).
 - Calls need exactly the declared number of arguments (no defaults, no
   variadic functions).
+- **Named arguments** (v0.4): `heat_input(voltage: 25 V, current: 250 A,
+  speed: 5 mm/s, efficiency: 0.8)`. Positional arguments come first, then
+  named ones in any order (`f(1, c: 3, b: 2)`); a positional argument after
+  a named one is a syntax error. Each parameter is given exactly once:
+  `'f' has no parameter 'c' (its parameters are: a, b)`,
+  `argument 'a' of 'f' is given twice`, `missing argument 'a' of 'f'`.
+  Arguments are **evaluated in parameter order**, whatever order they are
+  written in, so `f(b: g(), a: h())` calls `h` first. Named arguments work
+  for top-level functions and module functions (`welding.t85_thin(...)`);
+  built-ins (`print`, `len`, `.to`, ...) and calls through a value whose
+  function is only known at run time reject them with a compile error.
 - A function is a value: `let g = twice; apply(g, 4 s)`; printing it shows
   `<fn twice>`. Calls through a value are checked when they run (arity,
   annotated parameters).
@@ -523,6 +552,7 @@ functions. Both rules are syntax errors.
 | `math` | `sin(x)`, `cos(x)`, `exp(x)`, `log(x)` — `x` dimensionless; `sqrt(x)` — any quantity whose dimension has even exponents, the result has half the exponents (`math.sqrt(16 m^2)` is `4 m`); constant `math.pi` |
 | `numerical` | `linspace(start, stop, count)`, `sum(values)`, `mean(values)` (§13.4) |
 | `heat` | 1D transient heat conduction (`docs/heat-conduction.md`) |
+| `welding` | heat input (EN 1011-1), Rosenthal thick/thin plate fields, t8/5 (closed forms and EN 1011-2), peak temperatures and fused-zone/HAZ widths (`docs/welding.md`, v0.4) |
 
 - Members are always written qualified: `numerical.sum(v)`. The module
   name is visible **only in the file that imports it**; using it elsewhere
@@ -531,6 +561,9 @@ functions. Both rules are syntax errors.
 - A module name cannot be used as a value, redeclared in that file, or
   imported twice. An unknown module or member is an error that lists the
   available names.
+- Module function parameters may be quantities of a fixed dimension,
+  absolute temperatures, numbers, arrays or strings (`welding.efficiency("MAG")`,
+  v0.4). They accept named arguments (§8.1).
 - Calls are checked like calls of annotated functions: before running when
   the argument types are known, when they run otherwise (§4.1), with
   messages such as `argument 2 of 'numerical.linspace' ('stop') must be

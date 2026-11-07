@@ -56,6 +56,12 @@ plates (3D point source) as analytical references; numerical moving-source
 solver on structured grids. **Acceptance:** agreement with Rosenthal far from
 the source (where its singularity is irrelevant).
 
+> **Status (v0.4).** The analytical references are done: the `welding`
+> module computes both Rosenthal fields, t8/5 (closed forms and EN 1011-2),
+> exact peak temperatures and fused-zone/HAZ widths, verified in
+> `tests/numerical/test_welding.c` (`docs/welding.md` §4). The numerical
+> moving-source solver is not implemented yet.
+
 ## Stage 6 — Goldak double-ellipsoid model
 
 Volumetric heat source with front/rear ellipsoid parameters

@@ -111,6 +111,8 @@ struct MflExpr {
     MflScale    unit_scale; /* UNIT-typed nodes: exact factor to coherent SI */
     MflRefKind  ref_kind;   /* IDENT (and callee IDENT): set by the checker */
     int         ref_index;
+    MflText     label;      /* call argument given by name (`f(speed: 5 mm/s)`), v0.4;
+                               length 0 for a positional argument */
     union {
         MflText text;
         int     boolean;

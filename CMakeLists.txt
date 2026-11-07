@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 project(MFL
-    VERSION 0.3.0
+    VERSION 0.4.0
     DESCRIPTION "MFL - Materials & Manufacturing Language"
     LANGUAGES C)
 
@@ -26,6 +26,7 @@ add_library(mfl_numerical STATIC
     modules/numerical/vector.c
     modules/numerical/heat1d.c
     modules/numerical/heat1d_export.c
+    modules/numerical/welding.c
     src/runtime/number.c
 )
 target_include_directories(mfl_numerical
@@ -50,6 +51,7 @@ add_library(mfl_core
     src/compiler/loader.c
     src/modules/natives.c
     src/modules/heat_natives.c
+    src/modules/welding_natives.c
     src/vm/vm.c
     src/api/mfl_api.c
 )
@@ -133,7 +135,7 @@ if(MFL_BUILD_EXAMPLES)
     install(TARGETS mfl_heat_host RUNTIME DESTINATION bin)
 endif()
 install(DIRECTORY examples/ DESTINATION examples)
-install(FILES docs/language-spec.md docs/heat-conduction.md docs/embedding.md docs/units.md
+install(FILES docs/language-spec.md docs/heat-conduction.md docs/embedding.md docs/units.md docs/welding.md
         DESTINATION docs)
 install(FILES LICENSE DESTINATION .)
 install(FILES packaging/README-package.md DESTINATION . RENAME README.md)
@@ -206,6 +208,10 @@ if(MFL_BUILD_TESTS)
     target_link_libraries(test_heat1d PRIVATE mfl_numerical)
     mfl_set_warnings(test_heat1d)
     add_test(NAME numerical_heat1d COMMAND test_heat1d)
+    add_executable(test_welding tests/numerical/test_welding.c)
+    target_link_libraries(test_welding PRIVATE mfl_numerical)
+    mfl_set_warnings(test_welding)
+    add_test(NAME numerical_welding COMMAND test_welding)
     add_executable(test_heat1d_export tests/numerical/test_heat1d_export.c)
     target_link_libraries(test_heat1d_export PRIVATE mfl_numerical)
     mfl_set_warnings(test_heat1d_export)
@@ -281,6 +287,7 @@ if(MFL_BUILD_TESTS)
                 -DEXPECTED=${PROJECT_SOURCE_DIR}/${expected}
                 -DEXPECTED_STDERR=${PROJECT_SOURCE_DIR}/tests/cmake/empty.txt
                 -DWORKDIR=${PROJECT_SOURCE_DIR}
+                ${ARGN}
                 -P ${PROJECT_SOURCE_DIR}/tests/cmake/compare_output.cmake)
     endfunction()
 
@@ -409,6 +416,16 @@ if(MFL_BUILD_TESTS)
         "center reaches 150 degC at the sample t = 90 s [|] previous sample: 80 s -> 146[.][0-9]+ degC\ncenter does not reach 600 degC within 600 s")
     mfl_add_run_test(run_bar_heated_end examples/thermal/bar_heated_end.mfl
         tests/language/run/bar_heated_end.expected)
+    # Libm rounding differs across platforms. Check numbers with 1e-12
+    # absolute + relative tolerance, while preserving all labels and units.
+    add_executable(compare_numeric_output tests/numerical/compare_numeric_output.c)
+    if(MFL_LIBM)
+        target_link_libraries(compare_numeric_output PRIVATE ${MFL_LIBM})
+    endif()
+    mfl_set_warnings(compare_numeric_output)
+    mfl_add_run_test(run_thermal_cycle examples/welding/thermal_cycle.mfl
+        tests/language/run/thermal_cycle.expected
+        -DNUMERIC_COMPARATOR=$<TARGET_FILE:compare_numeric_output>)
     # Physical model of the virtual calorimetry lab (examples/lab).
     mfl_add_run_test(run_lab_model examples/lab/check_model.mfl tests/language/run/lab_model.expected)
 

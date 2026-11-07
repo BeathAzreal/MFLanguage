@@ -1,0 +1,8 @@
+tests/language/errors/compile_named_args.mfl:3:18: error: 'f' has no parameter 'c' (its parameters are: a, b)
+tests/language/errors/compile_named_args.mfl:4:18: error: argument 'a' of 'f' is given twice
+tests/language/errors/compile_named_args.mfl:5:7: error: missing argument 'a' of 'f' (its parameters are: a, b)
+tests/language/errors/compile_named_args.mfl:6:18: error: argument 'b' of 'f' is given twice
+tests/language/errors/compile_named_args.mfl:7:14: error: named argument 'a': built-in functions take positional arguments only
+tests/language/errors/compile_named_args.mfl:8:22: error: named argument 'unit': '.to' and '.value_in' take a unit, not named arguments
+tests/language/errors/compile_named_args.mfl:9:27: error: 'numerical.sum' has no parameter 'vals' (its parameters are: values)
+tests/language/errors/compile_named_args.mfl:10:23: error: named argument 'x': the function called here is only known when the program runs, so its parameter names are not; pass the arguments by position
